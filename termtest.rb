@@ -1,38 +1,10 @@
 require 'pty'
 require 'io/console'
+
 require_relative 'term'
-
-PALETTE256=[
-  0x000000, 0x800000, 0x008000, 0x808000, 0x000080, 0x800080, 0x008080, 0xc0c0c0,
-  0x808080, 0xff0000, 0x00ff00, 0xffff00, 0x0000ff, 0xff00ff, 0x00ffff, 0xffffff]+
-  [0,0x5f, 0x87, 0xaf, 0xd7, 0xff].repeated_permutation(3).sort.map{|ary| (ary[0]<<16)+(ary[1]<<8)+ary[2]}+
-  (8..244).step(10).map{|n| (n<<16)+(n<<8)+n}
-
-class EscapeParser
-  attr_reader :str
-
-  def initialize
-    @state = :start
-    @str = ""
-  end
-
-  def put(ch)
-    @str << ch.chr
-    case @state
-    when :start
-      if ch == 91; then @state = :csi
-      elsif ch == 93; then @state = :oc
-      elsif /\w/.match(ch.chr); then @state = :complete; end
-    when :csi
-      @state = :complete if /[[:alpha:]]|[[:cntrl:]]/.match(ch.chr)
-    when :oc;  @state = :complete if ch == 7
-    else
-      raise "Complete";
-    end
-  end
-
-  def complete?; @state == :complete; end
-end
+require_relative 'lib/escapeparser'
+require_relative 'lib/palette'
+require_relative 'lib/termbuffer'
 
 class RubyTerm
   SHELL = "/bin/bash"
@@ -40,10 +12,10 @@ class RubyTerm
   CHAR_W = 6
   CHAR_H = 12
 
-  PALETTE_BASIC = [ # dim(0..7) + bright(8..15)
-    0x20201d, 0xd73737, 0x60ac39, 0xae9513, 0x6684e1, 0xb854d4, 0x1fad83, 0xffffff,
-    0x7d7a68, 0xd73737, 0x60ac39, 0xae9513, 0x6684e1, 0xb854d4, 0x1fad83, 0xffffff]
   BOLD=1
+
+  BG=PALETTE_BASIC[0]
+  FG=PALETTE_BASIC[7]
 
   def initialize
     init
@@ -51,30 +23,30 @@ class RubyTerm
     @master, @wr, pid = *PTY.spawn(SHELL)
     @term_width  = 80
     @term_height = 1000
-    @scrbuf = []
-    @bg = PALETTE_BASIC[0]
-    @fg = PALETTE_BASIC[7]
+    @buffer = TermBuffer.new
+    @bg = BG
+    @fg = FG
     @mode = 0
+    @cursor = true
   end
 
-  def scrbuf_set(x,y,ch, fg=0, bg=0)
-    @scrbuf[y]||=[]
-    @scrbuf[y][x] = [ch.ord,fg,bg]
-  end
-
-  def scrbuf_get(x,y); (@scrbuf[y]||[])[x]; end
-  def scrbuf_scroll_up; @scrbuf.shift; end
-  def draw_cursor(x,y); xfillrect(x,y, CURSOR); end
+  def clear_cursor(x,y); xclear(x,y, CHAR_W, CHAR_H); end
 
   def draw(x,y,cell)
     xfillrect(x,y, (cell && cell[2]) || PALETTE_BASIC[4])
     xclear(x,y, CHAR_W, CHAR_H) if !cell || !cell[2]
     if cell && cell[0] != 0
-      xdrawch(x,y, cell[0], cell[1] || PALETTE_DEFAULT[7], cell[2] || PALETTE_DEFAULT[0])
+      xdrawch(x,y, cell[0], cell[1] || FG, cell[2] || BG)
     end
   end
 
-  def redraw_line y; (0...@term_width).each {|x| draw(x,y, scrbuf_get(x,y)); }; end
+  def draw_cursor(x,y);
+    cell = @buffer.get(x,y)
+    xfillrect(x,y, CURSOR)
+    xdrawch(x,y, cell[0], BG, CURSOR) if cell && cell[0]>31
+  end
+
+  def redraw_line y; (0...@term_width).each {|x| draw(x,y, @buffer.get(x,y)); }; end
 
   def redraw
     xclear(0,0,0,0)
@@ -93,23 +65,23 @@ class RubyTerm
     case c = codes.shift
     when 5; PALETTE256[codes.shift]
     when 2; codes.shift << 16 | codes.shift << 8 | codes.shift
-    else;   PALETTE_BASIC[0];
+    else;   BG
     end
   end
 
   def set_modes(codes)
     while c = codes.shift
       case c
-      when 0;       @mode = 0; @fg = PALETTE_BASIC[7]; @bg = PALETTE_BASIC[0]
+      when 0;       @mode = 0; @fg = FG; @bg = BG
       when 1;       @mode |= BOLD
       when 2..8;    p [:set_mode, c]
       when 22;
       when 30..37;  @fg = PALETTE_BASIC[c-30 + (@mode & BOLD ? 8:0)]
       when 38;      @fg = parse_color(codes)
-      when 39;      @fg = PALETTE_BASIC[7]
+      when 39;      @fg = FG
       when 40..47;  @bg = PALETTE_BASIC[c-40 + (@mode & BOLD ? 8:0)]
       when 48;      @bg = parse_color(codes)
-      when 49;      @bg = PALETTE_BASIC[0]
+      when 49;      @bg = BG
       else return p [:set_modes, c, codes]
       end
     end
@@ -119,22 +91,62 @@ class RubyTerm
     @esc.put(ch)
     if @esc.complete?
       s = @esc.str
-      if s == "[H"
-        @x = 0
-        @y = 0
-      elsif s[0] == "[" && s[-1] == "H"
-        y,x = *s[1..-2].split(";")
-        @x = x.to_i-1
-        @y = y.to_i-1
-      elsif s == "[0K" || s == "[K"
-        (@x...@term_width).each {|x| scrbuf_set(x,@y,0) }
-        xclear(@x,@y, 0, CHAR_H)
-      elsif s == "[3J"
-        @scrbuf = []
-        redraw
-      elsif s[0] == "[" && s[-1] == "m"
-        codes = s[1..-2].split(";").map(&:to_i)
-        set_modes(codes)
+      if s[0] == ?[
+        if s[1] != "?"
+          args = s[1..-2].split(/[:;]/).map(&:to_i)
+          #p [s[-1], args]
+          if s[-1] == "A"
+            @y -= args[0] || 1
+            @y = 0 if @y < 0
+          elsif s[-1] == "B"
+            @y += args[0] || 1
+            @y = @term_height if @y > @term_height
+          elsif s[-1] == "C"
+            @x += args[0] || 1
+            @x = @term_width if @x > @term_width
+          elsif s[-1] == "D"
+            @x -= args[0] || 1
+            @x = 0 if @x < 0
+          elsif s == "[H"
+            @x = 0
+            @y = 0
+          elsif s[-1] == "H"
+            y,x = *s[1..-2].split(";")
+            @x = x.to_i-1
+            @y = y.to_i-1
+          elsif s[-1] == "d"
+            @y = s[1..-2].to_i
+          elsif s == "[0K" || s == "[K"
+            (@x...@term_width).each {|x| @buffer.set(x,@y,0) }
+            xclear(@x,@y, 0, CHAR_H)
+          elsif s == "[3J"
+            @buffer.clear
+            redraw
+          elsif s[-1] == "m"
+            codes = s[1..-2].split(";").map(&:to_i)
+            set_modes(codes)
+          else
+            p @esc
+          end
+        elsif s[1] == "?"
+          if s[-1] == "h"
+            s[1..-2].split(";").map(&:to_i).each do |code|
+              case code
+              when 25
+                @cursor = false
+                clear_cursor(@x,@y)
+              end
+            end
+          elsif s[-1] == "l"
+            s[1..-2].split(";").map(&:to_i).each do |code|
+              case code
+              when 25; @cursor = true
+              end
+            end
+          end
+        else
+          p @esc
+        end
       else
         p @esc
       end
@@ -150,10 +162,13 @@ class RubyTerm
       case ch
       when 7
         p :bell
+      when 127
+        @x -= 1
+        @x = 0 if @x < 0
+        @buffer.set(@x, @y, 0)
       when 8
         @x -= 1
         @x = 0 if @x < 0
-        scrbuf_set(@x, @y, 0)
       when 9
         write(" "*((4-@x)%4))
       when 10
@@ -169,7 +184,7 @@ class RubyTerm
       when 27
         @esc = EscapeParser.new
       else
-        scrbuf_set(@x, @y, ch, @fg, @bg)
+        @buffer.set(@x, @y, ch, @fg, @bg)
         @x += 1
         if @x >= @term_width
           @x = 0
@@ -177,12 +192,12 @@ class RubyTerm
         end
       end
     end
-    if @y >= @term_height
-      scrbuf_scroll_up
+    if @y > @term_height
+      @buffer.scroll_up
       @y -= 1
       redraw
     end
-    c = scrbuf_get(ox,oy) || [32,0,0]
+    c = @buffer.get(ox,oy) || [32,0,0]
     draw(ox,oy,c)
     draw_cursor(@x,@y)
   end
@@ -205,19 +220,17 @@ class RubyTerm
 
   def run
     f = IO.new(self.fd)
-    m = @master
-
     loop do
-      rs, ws = IO.select([f, m])
+      rs, ws = IO.select([f, @master])
       rs.each do |s|
         case s.fileno
-        when m.fileno # PTY
-          write(m.read_nonblock(1024).force_encoding("UTF-8"))
-          flush
+        when @master.fileno # PTY
+          write(@master.read_nonblock(1024).force_encoding("UTF-8"))
         else # X11
-          self.process
+          process
         end
       end
+      flush
     end
   end
 end

@@ -10,7 +10,6 @@
 #define CHAR_H   12
 #define TOPMOST  10
 #define LEFTMOST 2
-#define BG_DEFAULT 0x20201d
 
 Display *dpy;
 Window win;
@@ -45,21 +44,16 @@ VALUE xdrawch(VALUE self, VALUE x, VALUE y, VALUE c, VALUE fg, VALUE bg) {
 
 VALUE term_init(){
   XSetWindowAttributes attrs;
-  char **missing_list,
-       *def_string;
+  char **missing_list, *def_string;
   int missing_count;
 
   setlocale(LC_ALL, "");
   dpy = XOpenDisplay(NULL);
   if(dpy == NULL) exit(1);
 
-  attrs.background_pixel = BG_DEFAULT;
-  attrs.event_mask
-    = SubstructureNotifyMask |
-      StructureNotifyMask |
-      ExposureMask |
-      KeyPressMask |
-      ButtonPressMask;
+  attrs.background_pixel = 0;
+  attrs.event_mask = SubstructureNotifyMask | StructureNotifyMask |
+      ExposureMask | KeyPressMask | ButtonPressMask;
 
   win = XCreateWindow(dpy, DefaultRootWindow(dpy),
     0, 0, 400, 400, 0, DefaultDepth(dpy, DefaultScreen(dpy)),
@@ -74,17 +68,10 @@ VALUE term_init(){
   XChangeProperty(dpy, win, XA_NET_WM_WINDOW_OPACITY, XA_CARDINAL, 32,
   PropModeReplace, (unsigned char *)&opacity, 1L);
 
-
   XMapWindow(dpy, win);
   XFlush(dpy);
 
-  fnt = XCreateFontSet(
-    dpy,
-    FONT_STRING,
-    &missing_list,
-    &missing_count,
-    &def_string
-  );
+  fnt = XCreateFontSet(dpy, FONT_STRING, &missing_list, &missing_count, &def_string);
   if(fnt == NULL) exit(2);
   XFreeStringList(missing_list);
 }
@@ -145,6 +132,6 @@ void Init_term() {
   rb_define_method(mod, "xclear", xclear, 4);
   rb_define_method(mod, "xdrawch", xdrawch, 5);
   rb_define_method(mod, "xfillrect", xfillrect, 3);
-   rb_define_method(mod, "flush", term_flush, 0);
+  rb_define_method(mod, "flush", term_flush, 0);
   rb_define_method(mod, "process", term_process,0);
 }

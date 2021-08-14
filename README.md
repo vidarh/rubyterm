@@ -46,3 +46,6 @@ Some thoughts on where I want to take this:
 If all goes well, then run `ruby termtest.rb` and with some luck you'll get
 a terminal window.
 
+## Resources
+
+https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Definitions
