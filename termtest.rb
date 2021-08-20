@@ -119,6 +119,11 @@ class RubyTerm
           elsif s == "[0K" || s == "[K"
             (@x...@term_width).each {|x| @buffer.set(x,@y,0) }
             xclear(@x,@y, 0, CHAR_H)
+          elsif s == "[2J"
+            @buffer.clear
+            @x = 0
+            @y = 0
+            redraw
           elsif s == "[3J"
             @buffer.clear
             redraw
@@ -147,6 +152,7 @@ class RubyTerm
         else
           p @esc
         end
+      elsif s[0] == "]"
       else
         p @esc
       end
