@@ -1,0 +1,2 @@
+#!/bin/sh
+echo -e "\e#3\rHello World\n\e#4Hello World\n\e#6Hello World"
