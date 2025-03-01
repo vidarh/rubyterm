@@ -2,8 +2,8 @@
 # Ruby Term
 
 This is a *very early*, *very rough* Ruby terminal application that uses
-a tiny extension in C (see term.c) to talk to talk to X11, and that
-is otherwise pure Ruby.
+a pure-Ruby X11 client to talk to an X server. The entire terminal is
+pure Ruby.
 
 It will change a lot when I get time...
 
@@ -24,12 +24,6 @@ Some thoughts on where I want to take this:
 * Decouple the interpretation of escape sequences and updates of the terminal
   buffer entirely from both the pty handling and the X11 interface, and make
   it a separate gem.
-* Create a very small, very limited extension to encompass the X11 interface,
-  and separate it out (think the capabilities needed to write something like
-  rofi or dmenu; if you want to write something that uses X more advanced than
-  that you probably want GTK or Qt etc.)
-* **MAYBE** move to a pure-Ruby direct implementation of a small subset of the
-  X Protocol.
 * Allow Ruby applications to instantiate a "terminal window" with an IO object
   as the interface without actually running in a terminal (I want to use it to
   run my own editor in), while being able to do **basic** other X stuff.
@@ -39,13 +33,16 @@ Some thoughts on where I want to take this:
   the current code. I will value terseness, but only as long as it helps
   preserve readability.
 
+## Done
+* Moved to a pure-Ruby direct implementation of a small subset of the
+  X Protocol.
+
 ## To test it:
 
-`ruby extconf.rb` to create makefiles for the extension. Then `make`.
-
-If all goes well, then run `ruby termtest.rb` and with some luck you'll get
-a terminal window.
+`bundle install`, then run `ruby termtest.rb` and with some luck you'll
+get a terminal window.
 
 ## Resources
 
 https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Definitions
+https://www.xfree86.org/current/ctlseqs.html
