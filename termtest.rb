@@ -158,15 +158,8 @@ class RubyTerm
     @window.clear(0, 0, @window.width, @window.height)
     
     if @window.scrollback_mode
-      # When in scrollback mode, clear exactly the number of lines corresponding to 
-      # the scrollback amount. This ensures proper clearing of lines when scrolling back.
-      lines_to_clear = @window.scrollback_count * char_h
-      @window.clear(0, 0, @window.width, lines_to_clear)
-      
-      # Draw with scrollback offset
       @buffer.redraw_all(@window.scrollback_count)
     else
-      # Draw without scrollback
       @buffer.redraw_all(0)
     end
     
