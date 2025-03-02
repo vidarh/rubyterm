@@ -32,7 +32,9 @@ class TrackChanges
   def scroll_start  = @buffer.scroll_start
   def scroll_end    = @buffer.scroll_end
   def blinky        = @buffer.blinky
-  def each_character(*args,&block) = @buffer.each_character(*args, &block)
+  def each_character(scrollback_offset = 0, &block)
+    @buffer.each_character(scrollback_offset, &block)
+  end
 
   # # Mutation
   #
@@ -90,8 +92,8 @@ class TrackChanges
 
   def redraw(x,y) = draw_buffered(x,y, @buffer.get(x,y), true)
 
-  def redraw_all
-    @buffer.each_character { |*args| draw_buffered(*args, true) }
+  def redraw_all(scrollback_offset = 0)
+    @buffer.each_character(scrollback_offset) { |*args| draw_buffered(*args, true) }
     draw_flush
   end
 

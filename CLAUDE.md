@@ -6,6 +6,13 @@
 - Install to ~/bin: `make promote`
 - Debug mode: `DEBUG=1 ruby termtest.rb`
 
+## Code Organization
+
+### Scrollback Buffer
+- Primary implementation: `lib/termbuffer.rb` - handles line storage and management
+- Scroll handling: `lib/window.rb` - contains viewport and scroll position logic
+- User input processing: `lib/keymap.rb` - mappings for Page Up/Down and scrolling keys
+
 ## Code Style Guidelines
 
 ### Formatting & Syntax

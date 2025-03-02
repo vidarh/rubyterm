@@ -17,6 +17,8 @@ class Line < Array
 end
 
 class ScrBuf
+  attr_reader :scrollback_buffer, :scrollback_lineattrs
+  
   def initialize
     @w = nil
     @h = nil
@@ -26,6 +28,8 @@ class ScrBuf
   def clear
     @scrbuf    = []
     @lineattrs = []
+    @scrollback_buffer = []
+    @scrollback_lineattrs = []
   end
   
   def [](y)
@@ -48,17 +52,56 @@ class ScrBuf
     enforce_height
   end
 
-  def lineattrs(y) = @lineattrs[y]
+  def lineattrs(y)
+    if y < 0 && !@scrollback_lineattrs.empty?
+      # Convert negative index to scrollback buffer index
+      scrollback_index = @scrollback_lineattrs.size + y
+      return scrollback_index >= 0 ? @scrollback_lineattrs[scrollback_index] : 0
+    end
+    @lineattrs[y]
+  end
 
   def set_lineattrs(y, v)
     @lineattrs[y] = v
   end
 
-  def each_character
-    @scrbuf.each_with_index do |line,y|
-      if line
+  def each_character(scrollback_offset = 0)
+    visible_lines_used = 0
+    
+    if scrollback_offset > 0 && !@scrollback_buffer.empty?
+      # Get scrollback lines to display
+      offset = [@scrollback_buffer.size, scrollback_offset].min
+      if offset > 0
+        # Only show last 'offset' lines from scrollback
+        scrollback_lines = @scrollback_buffer[-offset..-1] || []
+        
+        # Render scrollback lines at the top of the screen
+        scrollback_lines.each_with_index do |line, idx|
+          if line
+            line.each_with_index do |cell, x|
+              if cell
+                # Render at position from top of screen
+                yield x, idx, cell
+              end
+            end
+          end
+        end
+        
+        visible_lines_used = scrollback_lines.size
+      end
+    end
+    
+    # Then get characters from main buffer, but only render lines that will fit after scrollback
+    # Add 1 to fix the off-by-one error (draw one more line)
+    remaining_lines = @h ? (@h - visible_lines_used + 1) : @scrbuf.size
+    
+    @scrbuf.each_with_index do |line, y|
+      if line && y < remaining_lines
         line.each_with_index do |cell, x|
-          yield x,y, cell
+          if cell 
+            # Offset y by the number of scrollback lines already shown
+            yield x, y + visible_lines_used, cell
+          end
         end
       end
     end
@@ -117,19 +160,43 @@ class TermBuffer
     @scroll_start = nil
     @scroll_end = nil
   end
+  
+  # Get the size of the scrollback buffer
+  def scrollback_size
+    @scrbuf.scrollback_buffer.size
+  end
 
   def on_resize(w,h)
     raise if !h
     @scrbuf.resize(w,h)
   end
   
-  def get(x,y) (@scrbuf[y]||[])[x]; end
-  def getline(y) = @scrbuf[y]
+  def get(x,y)
+    if y < 0 && !@scrollback_buffer.empty?
+      # Convert negative index to scrollback buffer index
+      scrollback_index = @scrollback_buffer.size + y
+      return scrollback_index >= 0 ? (@scrollback_buffer[scrollback_index] || [])[x] : nil
+    end
+    (@scrbuf[y]||[])[x]
+  end
+  def getline(y)
+    if y < 0 && !@scrbuf.scrollback_buffer.empty?
+      # Convert negative index to scrollback buffer index
+      scrollback_index = @scrbuf.scrollback_buffer.size + y
+      return scrollback_index >= 0 ? @scrbuf.scrollback_buffer[scrollback_index] : nil
+    end
+    @scrbuf[y]
+  end
 
   # Yields every position *that has a set cell*
   # Will *not* yield every position
-  def each_character(&block) = @scrbuf.each_character &block
-  def each_character_between(spos,epos,&block) = @scrbuf.each_character_between(spos,epos,&block)
+  def each_character(scrollback_offset = 0, &block)
+    @scrbuf.each_character(scrollback_offset, &block)
+  end
+  
+  def each_character_between(spos, epos, &block)
+    @scrbuf.each_character_between(spos, epos, &block)
+  end
     
   def lineattrs(y) = @scrbuf.lineattrs(y.to_i)
   def set_lineattrs(y,v); @scrbuf.set_lineattrs(y,v); end
@@ -153,8 +220,23 @@ class TermBuffer
     end
   end
 
-  def scroll_up;
-    delete_line(@scroll_start.to_i)
+  def scroll_up
+    # Save the line to scrollback buffer before deleting
+    y = @scroll_start.to_i
+    scrollback_line = @scrbuf[y]
+    
+    # Always store the line in scrollback, even if it seems empty -
+    # this ensures consistent scrollback navigation
+    line_to_save = scrollback_line ? scrollback_line.dup : []
+    @scrbuf.scrollback_buffer.push(line_to_save)
+    @scrbuf.scrollback_lineattrs.push(@scrbuf.lineattrs(y))
+    
+    # Add a debug marker to see what's being stored
+    if ENV["DEBUG"]
+      puts "Saving scrollback line: #{line_to_save.inspect}"
+    end
+    
+    delete_line(y)
   end
 
   def insert(x,y,num, cell)

@@ -7,10 +7,78 @@ require 'skrift/x11'
 #require 'pry'
 
 class Window
-  attr_reader :dpy, :wid # FIXME
+  attr_reader :dpy, :wid, :scrollback_count # FIXME
   attr_accessor :width, :height
+  
+  # Get scrollback status
+  def scrollback_mode
+    @scrollback_count > 0
+  end
+  
+  # Set buffer reference to access scrollback size
+  def set_buffer(buffer)
+    @buffer = buffer
+  end
+  
+  # Get scrollback buffer size
+  def scrollback_buffer_size
+    return 0 unless @buffer
+    @buffer.scrollback_size
+  end
+  
+  # Increase scrollback counter
+  def scrollback_page_up
+    # Get current scrollback buffer size
+    max_scrollback = scrollback_buffer_size
+    return if max_scrollback == 0
+    
+    # Store previous count for calculating how many new lines to clear
+    previous_count = @scrollback_count
+    
+    # Limit scrollback count to available lines
+    @scrollback_count += 10
+    if @scrollback_count > max_scrollback
+      @scrollback_count = max_scrollback
+    end
+    
+    # Calculate how many new lines we've scrolled and clear them
+    new_lines = @scrollback_count - previous_count
+    if new_lines > 0
+      # Clear the area where new scrollback lines will appear
+      clear(0, 0, @width, new_lines * char_h)
+    end
+    
+    draw_scrollback_indicator if @scrollback_count <= 10
+  end
+  
+  # Decrease scrollback counter
+  def scrollback_page_down
+    return false if @scrollback_count <= 0
+    
+    # Remember previous count
+    previous_count = @scrollback_count
+    
+    @scrollback_count -= 10
+    if @scrollback_count <= 0
+      # Exiting scrollback mode
+      @scrollback_count = 0
+      @dirty = true
+      
+      # Clear entire scrollback area that was showing
+      clear(0, 0, @width, previous_count * char_h)
+      return true
+    else
+      # Clear area that was occupied by lines no longer in scrollback
+      lines_removed = previous_count - @scrollback_count
+      if lines_removed > 0
+        clear(0, 0, @width, lines_removed * char_h)
+      end
+    end
+    false
+  end
 
   def initialize(**opts)
+    @scrollback_count = 0
     
     @dpy = X11::Display.new
     @screen = @dpy.screens.first
@@ -155,12 +223,27 @@ class Window
     @dirty = true
   end
 
+  def draw_scrollback_indicator
+    if @scrollback_count > 0
+      # First clear the top line to avoid overlapping text
+      clear(0, 0, @width, char_h)
+      
+      indicator = "---scrollback---"
+      x = (@width - indicator.length * char_w) / 2
+      @skr.render_str(@pic, 0xff0000, x, 0, indicator)
+      @dirty = true
+    end
+  end
+
   def copy_buffer
     @dirty = false
     @flushgc ||= @dpy.create_gc(@buf, foreground: @alpha, background: @alpha,
       graphics_exposures: false
     )
     @dpy.copy_area(@buf, @wid, @flushgc, 0, 0, 0,0,@width, @height)
+    
+    # Draw scrollback indicator after copying buffer if in scrollback mode
+    draw_scrollback_indicator if @scrollback_count > 0
   end
   
   def flush
@@ -181,8 +264,13 @@ class Window
       fillrect(0,srcy+h-step, w, step, $step)
       $step += 16
     else
-      clear(0,srcy+h-step, w, step+1)
+      # Use the full window width to ensure we clear the entire line width,
+      # not just the content width that was passed in
+      clear(0, srcy+h-step, @width, step+1)
     end
+    
+    # Redraw the scrollback indicator if needed
+    draw_scrollback_indicator if @scrollback_count > 0
   end
 
   def scroll_down(srcy, w, h, step)
@@ -196,5 +284,8 @@ class Window
     else
       clear(0,srcy, w, step)
     end
+    
+    # Redraw the scrollback indicator if needed
+    draw_scrollback_indicator if @scrollback_count > 0
   end
 end

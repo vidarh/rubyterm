@@ -96,4 +96,14 @@ class WindowAdapter
     # FIXME: Take into account lineattrs
     draw_flag_lines(flags, x, y, c.length, fg)
   end
+  
+  # Force a complete redraw of the window contents
+  def redraw_all
+    # First clear the entire window
+    @window.clear(0, 0, @window.width, @window.height)
+    
+    # Force the window to flush and update its display
+    @window.dirty!
+    @window.flush
+  end
 end

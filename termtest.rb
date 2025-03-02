@@ -118,6 +118,9 @@ class RubyTerm
 
     @buffer = TrackChanges.new(TermBuffer.new, @adapter)
     @buffer.on_resize(@term_width, @term_height)
+    
+    # Give window access to the buffer for scrollback
+    @window.set_buffer(@buffer)
 
     @bg = BG
     @fg = FG
@@ -150,7 +153,25 @@ class RubyTerm
   end
 
   def redraw
-    @buffer.redraw_all
+    # Always clear the entire screen before redrawing to ensure all areas are cleaned up
+    # This ensures no artifacts remain at the ends of lines
+    @window.clear(0, 0, @window.width, @window.height)
+    
+    if @window.scrollback_mode
+      # When in scrollback mode, clear exactly the number of lines corresponding to 
+      # the scrollback amount. This ensures proper clearing of lines when scrolling back.
+      lines_to_clear = @window.scrollback_count * char_h
+      @window.clear(0, 0, @window.width, lines_to_clear)
+      
+      # Draw with scrollback offset
+      @buffer.redraw_all(@window.scrollback_count)
+    else
+      # Draw without scrollback
+      @buffer.redraw_all(0)
+    end
+    
+    # Make sure changes are rendered and cursor is shown
+    @buffer.draw_flush
     draw_cursor
   end
 
@@ -587,6 +608,32 @@ class RubyTerm
       
     when :"ctrl_+" then adjust_fontsize(1.0)
     when :"ctrl_-" then adjust_fontsize(-1.0)
+    when :shift_page_up
+      @window.scrollback_page_up
+      # Full redraw to show scrollback buffer
+      redraw
+      return
+    when :shift_page_down
+      # Don't do anything if not in scrollback mode
+      return if !@window.scrollback_mode
+      
+      # If we're exiting scrollback mode or still in it
+      changed = @window.scrollback_page_down
+      
+      # Redraw everything from scratch
+      redraw
+      
+      # Explicitly force cursor to be redrawn if exiting scrollback mode
+      if changed
+        # Clear cursor if it exists
+        clear_cursor
+        # Force draw cursor again
+        draw_cursor
+        # Ensure changes are flushed
+        @buffer.draw_flush
+        @window.flush
+      end
+      return
     when :XK_Insert  # Paste primary selection
       # FIXME: Giant hack
       primary = `xsel -p`

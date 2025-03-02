@@ -58,6 +58,8 @@ def lookup_string(dpy, event)
     when :XK_ISO_Left_Tab then return :shift_tab, nil
     when :XK_Down; then return :shift_down, nil
     when :XK_Up; then return :shift_up, nil
+    when :XK_Page_Up; then return :shift_page_up, nil
+    when :XK_Page_Down; then return :shift_page_down, nil
     end
   end
   
