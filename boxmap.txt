@@ -1,0 +1,35 @@
+
+x/y positions given around (0,0) centre, and clamped to 0...w/h,
+so giving high values works out to corners.
+op,x1,y1,x2,y2. Values can be scaled by integer factors.
+
+ops: r(rectangle). Prefer r
+extra: 2,3,4 "cuts" v/h stippled rect but maybe handle that separate.
+Maybe also handle the 3 diagnols and 4 curves separate.
+
+Specifying color (0 or 1) cuts number of rects significantly.
+
+0x2500: r,-255,0,255,0
+0x2501: r,-255,-1,255,1
+0x2502: r,0,-255,0,255
+0x2503: r,-255,-1,255,1
+0x2504: h,-255,0,255,0,2
+0x2505: h,-255,-1,255,1,2
+
+0x2556: r,-255,0,2,0; r,-2,0,-2,255; r,2,0,2,255
+
+starting x positions are
+left, centre, right + offset (-2..2)
+
+starting y positions are
+top, centre, bottom + offset (-2..2)
+
+2500 (l,c)-(r,c)  hclr
+2501 (l,c-1)-(r,c+1)
+2502 (c,t)-(c,b)
+[l,0,c,0],
+
+
+w=1, 2, 3, 4
+off=-2..+2
+start_x=

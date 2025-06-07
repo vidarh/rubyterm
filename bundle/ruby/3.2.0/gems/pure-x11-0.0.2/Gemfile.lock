@@ -1,0 +1,19 @@
+PATH
+  remote: .
+  specs:
+    pure-x11 (0.0.2)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    rake (13.0.6)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  pure-x11!
+  rake
+
+BUNDLED WITH
+   2.4.19
