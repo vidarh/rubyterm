@@ -20,7 +20,7 @@ require 'skrift/x11'
 require 'citrus/file'
 require 'toml-rb'
 
-require 'pry'
+#require 'pry'
 
 $> = $stderr
 
@@ -800,7 +800,7 @@ class RubyTerm
   def run(args)
     puts "RUNNING; args: #{args.inspect}"
 
-    @controller = Controller.new(self)
+    @controller = Controller.new(self, @config)
     @controller.run(*args)
    
     @lastblink  ||= Time.now

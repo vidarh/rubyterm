@@ -1,16 +1,21 @@
-
-
 #
 #  A spawned command that is controlling the terminal window,
 #  and on request receives events (mouse buttons etc.
 #
 class Controller
-  SHELL = "/home/vidarh/bin/rsh" #bash"
+  def initialize(term, config = {})
+    @term = term
+    @config = config
+    @shell = determine_shell
+  end
 
-  def initialize(term) = (@term = term)
+  def determine_shell
+    # Try config file first, then ENV["SHELL"], then fallback to /bin/sh
+    @config[:shell] || ENV["SHELL"] || "/bin/sh"
+  end
 
   def run(*args)
-    cmd = args.empty? ? SHELL : [SHELL, '-c', args.join(' ')]
+    cmd = args.empty? ? @shell : [@shell, '-c', args.join(' ')]
     @master, @wr, @pid = *PTY.spawn(*cmd)
 
     p "Controller: #{@master}"
@@ -31,7 +36,7 @@ class Controller
   def read
     @master.read_nonblock(128)
   rescue IO::EAGAINWaitReadable
-    IO.select([@master],[],[],nil)
+    IO.select([@master], [], [], nil)
     retry
   end
 
@@ -40,8 +45,8 @@ class Controller
     @wr.write("\x1bP!|00000000")
   end
 
-  def report_size(w,h) = (@master.winsize = [h+1,w])
-  def report_position(x,y) = @wr.write("\e[#{y+1};#{x+1}R")
+  def report_size(w, h) = (@master.winsize = [h + 1, w])
+  def report_position(x, y) = @wr.write("\e[#{y + 1};#{x + 1}R")
 
   # These are semantically different, though practically similar
   # *currently*. These are separate so they can be treated differently
@@ -51,15 +56,15 @@ class Controller
 
   def mouse_report(mode, event, x, y, release)
     case mode
-    when :digits then mouse_digits(event,x,y,release)
+    when :digits then mouse_digits(event, x, y, release)
     else # Currently only x10
-      mouse_x10(event,x,y)
+      mouse_x10(event, x, y)
     end
   end
 
   def mouse_digits(event, x, y, release)
-    p "\e[<#{event};#{x+1};#{y+1}#{release ? "m":"M"}"
-    @wr.write("\e[<#{event};#{x+1};#{y+1}#{release ? "m":"M"}")
+    p "\e[<#{event};#{x + 1};#{y + 1}#{release ? "m" : "M"}"
+    @wr.write("\e[<#{event};#{x + 1};#{y + 1}#{release ? "m" : "M"}")
   end
 
   def mouse_x10(event, x, y)
