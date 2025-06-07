@@ -1,6 +1,0 @@
-module Skrift
-  module X11
-    VERSION: String
-    # See the writing guide of rbs: https://github.com/ruby/rbs#guides
-  end
-end

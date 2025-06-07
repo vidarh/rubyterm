@@ -8,4 +8,4 @@ gem "toml-rb"
 
 gem "skrift" #, path: "/home/vidarh/Desktop/Projects/skrift"
 
-#gem "pry"
+gem "pry"
