@@ -21,9 +21,13 @@
       str = @buffer
       return nil if str.empty?
       last = str.length-1
+
       if str[-1].ord > 0x80
         # -1 is part of a multibyte sequence
-        if    str[-2] && str[-2].ord & 0xe0 == 0xc0 # -2..-1 is a 2 byte sequence; we're good.
+        if str.length == 1
+          # Single byte that starts a multibyte sequence
+            last = -2  # Process nothing, save everything
+        elsif str[-2] && str[-2].ord & 0xe0 == 0xc0 # -2..-1 is a 2 byte sequence; we're good.
         elsif str[-2] && str[-2].ord & 0xe0 == 0xe0 # Start of a 3 or 4 byte sequence
           last = str.length-3
         else # -2 is *part of a 3 or 4 byte sequence
@@ -35,13 +39,10 @@
           end
         end
       end
-      last = 0 if last < 0
-      @last = last # For debugging
       @leftover = str[last+1..-1].b
       @buffer = str[0..last].force_encoding("UTF-8")
       @buffer.each_char(&block)
       @buffer = @leftover
-      #p [:leftover, @buffer.length, @buffer] if @buffer.length > 0
     end
 
   end
