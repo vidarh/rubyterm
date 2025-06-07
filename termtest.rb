@@ -59,7 +59,7 @@ class RubyTerm
 
     @queue = Queue.new
     
-    @window = Window.new(fonts: @config[:fonts])
+    @window = Window.new(fonts: @config[:fonts], fontsize: @config[:fontsize])
     @adapter = WindowAdapter.new(@window, self)
     #@term = Term.new(@window)
 
