@@ -198,10 +198,9 @@ class RubyTerm
       @controller.report_size(w,h)
     end
 
-    return false if !should_redraw
-
-    #@window.clear(0,0,@pixelw,@pixelh)
-    #redraw
+    if should_redraw
+      redraw
+    end
   end
 
 
