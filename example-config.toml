@@ -1,0 +1,47 @@
+
+
+# You can give a single font, or an array.
+# If the name is a valid path, we try to open
+# it directly, after expansion (so ~ works).
+#
+# We also check ~/.local/share/fonts/[string]
+#
+# If we don't find a file that way, we execute:
+#
+#     fc-match --format='%{file}\n' $string
+#
+# If you want to force a fc-match (e.g. to
+# allow config file substitutions to take
+# precedence) then leave out the extension
+# E.g. if you have "Space Mono.ttf" in your
+# .local/share/fonts directory, and put "Space Mono"
+# below, we will run fc-match (and likely, but
+# not necessarily, find the same font).
+#
+# You can also include fc-match options.
+# This *includes* using '-s' or other options
+# that returns a list.
+#
+# *BE CAREFUL*, as if a glyph is unavailable
+# in a given font, we will look through each
+# font in turn until we either find it or
+# reach the end of the list, and this can get
+# slow
+#
+#
+fonts = [
+  #"Topaznew.ttf",
+  #"WP BoxDrawing.ttf",
+  # FIXME: Figure out why substitution fails for these:
+  "FiraCode-Regular.ttf", # Can't handle MD headings
+# "NovaMono for Powerline.ttf", # Seriously broken
+#  "ProFont For Powerline.ttf", # Can't handle '#' comments
+  "unifont-15.0.06.ttf", # Unifont has "almost everything" but scales badly
+
+  # FIXME: The fc-match seems to fail
+  "monospace",
+]
+
+fontsize = 32
+
+shell="/home/vidarh/bin/rsh"
