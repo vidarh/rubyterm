@@ -94,6 +94,7 @@ class RubyTerm
     # work better than xterm, but will adjust and consider
     # providing multiple modes
     ENV["TERM"] = "rxvt-256color"
+    ENV["COLORTERM"] = "truecolor"
 
     while args[0].to_s[0] == ?-
       case args[0]
