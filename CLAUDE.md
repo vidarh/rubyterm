@@ -2,7 +2,7 @@
 
 ## Build/Run Commands
 - Run terminal: `ruby termtest.rb`
-- Build executable: `make build` (creates standalone executable in file `t`)
+- Build executable (requires unreleased tool 'rubypkg'): `make build` (creates standalone executable in file `t`)
 - Install to ~/bin: `make promote`
 - Debug mode: `DEBUG=1 ruby termtest.rb`
 
