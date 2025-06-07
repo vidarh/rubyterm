@@ -1,13 +1,21 @@
+PATH
+  remote: /home/vidarh/Desktop/Projects/skrift-x11
+  specs:
+    skrift-x11 (0.2.1)
+      pure-x11
+      skrift
+
+PATH
+  remote: /home/vidarh/Desktop/Projects/skrift
+  specs:
+    skrift (0.2.0)
+
 GEM
   remote: https://rubygems.org/
   specs:
     citrus (3.0.2)
     pure-x11 (0.0.14)
     racc (1.8.1)
-    skrift (0.2.0)
-    skrift-x11 (0.2.1)
-      pure-x11
-      skrift
     toml-rb (4.0.0)
       citrus (~> 3.0, > 3.0)
       racc (~> 1.7)
@@ -18,8 +26,8 @@ PLATFORMS
 
 DEPENDENCIES
   pure-x11
-  skrift
-  skrift-x11
+  skrift!
+  skrift-x11!
   toml-rb
 
 BUNDLED WITH
