@@ -109,17 +109,12 @@ class Window
 
     #@gc2 = @dpy.create_gc(@wid, foreground: 0xffffff, background: 0x80000000)
 
-    # FIXME: Auto-scale this. This 1) wastest memory if the terminal is small
-    # 2) breaks horribly if the terminal is scaled above 1920x1080
-    @buf  = @dpy.create_pixmap(32, @wid, 1920, 1080)
-    clear(0,0,1920,1080)
+    # Create pixmap buffer with enough space for the window
+    create_buffer
 
     #@buf = @wid
-
-    fmt  = @dpy.render_find_visual_format(@visual)
-    @pic = @dpy.render_create_picture(@buf, fmt)
     
-    @scale = 16
+    @scale = opts[:fontsize] || 16
     @fontset = opts[:fonts]
     setup_fonts
 
@@ -130,14 +125,54 @@ class Window
 
   def dirty! = (@dirty = true)
     
+  # Create a buffer to back the terminal window
+  def create_buffer
+    # Free the old resources if they exist
+    if defined?(@pic) && @pic
+      @dpy.render_free_picture(@pic)
+      @pic = nil
+    end
+    
+    if defined?(@buf) && @buf
+      @dpy.free_pixmap(@buf)
+      @buf = nil
+    end
+    
+    # Create new buffer with dimensions matching the window
+    # Add extra space for possible future window growth
+    buffer_width = [@width * 2, 1920].max
+    buffer_height = [@height * 2, 1080].max
+    
+    @buf = @dpy.create_pixmap(32, @wid, buffer_width, buffer_height)
+    @buf_width = buffer_width
+    @buf_height = buffer_height
+    
+    # Clear the entire buffer
+    clear(0, 0, buffer_width, buffer_height)
+    
+    # Create the picture
+    fmt = @dpy.render_find_visual_format(@visual)
+    @pic = @dpy.render_create_picture(@buf, fmt)
+  end
+
   def on_resize(w,h)
     ow,oh=@width,@height
     @width, @height = w,h
-    clear(ow,0, w-ow, [oh,h].min) if w > ow
-    clear(0,oh, w, h-oh) if h > oh
+    
+    # If the window dimensions exceed the buffer size, recreate the buffer
+    if w > @buf_width || h > @buf_height
+      # Free old resources and create new buffer
+      create_buffer
+      
+      # Signal that a full redraw is needed
+      @dirty = true
+    else
+      # Clear newly visible areas
+      clear(ow, 0, w-ow, [oh,h].min) if w > ow
+      clear(0, oh, w, h-oh) if h > oh
+    end
 
     copy_buffer
-    # FIXME: Resize @buf pixmap here if need be
   end
 
   def setup_fonts
