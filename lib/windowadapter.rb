@@ -18,7 +18,7 @@ class WindowAdapter
 
   def char_w = @window.char_w
   def char_h = @window.char_h
-  def clear  = @window.clear(0,0,0,0)
+  def clear  = @window.clear(0,0,@window.width,@window.height)
 
   def dim(col) #FIXME
     [col].pack("l").each_byte.map{|b| b.ord*0.4 }.pack("C*").unpack("l")[0]
@@ -105,5 +105,15 @@ class WindowAdapter
     # Force the window to flush and update its display
     @window.dirty!
     @window.flush
+  end
+
+
+  def scroll_up(scroll_start, scroll_end)
+    @window.scroll_up(
+      char_h*((scroll_start||0)+1),
+      @window.width,
+      (scroll_end-scroll_start)*char_h,
+      char_h
+    )
   end
 end
