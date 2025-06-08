@@ -1,4 +1,4 @@
-require_relative 'lib/escapeparser'
+require_relative 'escapeparser'
 
 # This class is a start of untangling/extracting the *display* side
 # of RubyTerm from everything else. Currently it still indirectly
