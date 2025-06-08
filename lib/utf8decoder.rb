@@ -19,7 +19,7 @@
       # save those bytes for next time.
 
       str = @buffer
-      return nil if str.empty?
+      return nil if !str || str.empty?
       last = str.length-1
 
       if str[-1].ord > 0x80
