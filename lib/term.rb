@@ -28,7 +28,7 @@ class Term
   def char_h  = @adapter.char_h
 
   attr_accessor :x, :y, :wraparound, :cursor, :origin_mode,
-    :mouse_mode, :mouse_reporting, :tabs, :esc, :mode
+    :mouse_mode, :mouse_reporting, :tabs, :esc, :mode, :mouse_buttons
 
   def initialize(buffer, adapter)
     @buffer = buffer
