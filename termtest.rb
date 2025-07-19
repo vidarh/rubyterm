@@ -471,7 +471,7 @@ class RubyTerm
       event = [0,1,2,64,65][button-1]
       event += 32 if pkt.is_a?(X11::Form::MotionNotify)
       #button = [0,1,2,4,5][button-1]
-      @controller.mouse_report(@mouse_reporting, event, x,y, release)
+      @controller.mouse_report(@term.mouse_reporting, event, x,y, release)
     end
   end
   
