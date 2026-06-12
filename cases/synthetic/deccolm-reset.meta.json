@@ -1,0 +1,4 @@
+{
+  "skip_checks": ["state"],
+  "reason": "tmux ignores DECCOLM (CSI ?3l) and keeps prior screen content; clearing the screen on column-mode switch matches the VT100 spec, so the text oracle diverges by design. The redraw/markers checks still apply."
+}
