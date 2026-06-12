@@ -10,7 +10,7 @@ Quick start (full tour: [harness-quickstart.md](harness-quickstart.md)):
 
 ```sh
 ruby harness/cli.rb run --case cases/synthetic/dch.bin --oracle tmux   # one case
-ruby harness/cli.rb sweep --cases cases/synthetic --oracle tmux \
+ruby harness/cli.rb sweep --cases cases --oracle tmux \
     --ratchet ratchet.json                                             # regression gate
 ruby harness/cli.rb minimize --case failing.bin --checks redraw        # shrink a repro
 ```
@@ -122,9 +122,9 @@ ratchet, never remove**:
 
 ```sh
 # gate: exit 1 if any previously-passing case fails
-ruby harness/cli.rb sweep --cases cases/synthetic --oracle tmux --ratchet ratchet.json
+ruby harness/cli.rb sweep --cases cases --oracle tmux --ratchet ratchet.json
 # after fixing bugs: fold newly-passing cases in
-ruby harness/cli.rb sweep --cases cases/synthetic --oracle tmux \
+ruby harness/cli.rb sweep --cases cases --oracle tmux \
     --ratchet ratchet.json --update-ratchet
 ```
 
@@ -184,13 +184,38 @@ Proc pushed through the input queue), so a dump can never observe a
 half-processed chunk — a stronger barrier than the DA round-trip trick
 an external driver would need.
 
+## The debug-recording workflow
+
+`.claude/workflows/debug-recording.js` packages the
+recording-to-fixed-bug pipeline as a Claude Code workflow
+(`args: {rec: "path.rec", description: "what looked wrong"}`):
+
+1. **Reproduce** — replay with redraw+markers checks; if the automated
+   checks pass, an investigator agent probes interactively from the
+   user's description.
+2. **Localize** — extract at the failing offsets, minimize each,
+   dedupe by failure signature (up to `max_bugs`, default 3).
+3. **Diagnose** — one analyst per repro traces the bytes through the
+   code and must confirm/kill its hypothesis by varying the repro.
+4. **Red test** — the minimal repro is added as
+   `cases/bugs/<name>.bin` (+ geometry sidecar if non-default) and
+   mechanically confirmed to fail.
+5. **Fix** — one fixer per bug, sequential, two attempts; every
+   attempt is gated by an independent mechanical verification (case
+   green, ratchet sweep clean, `rake test` green — fixers never grade
+   themselves). Failed fixes are reverted; the red case stays as
+   backlog.
+6. **Cleanup** — a reviewer minimises the fix diff (verified state
+   snapshotted first), final verification, ratchet update. Changes are
+   left uncommitted for review.
+
 ## Fixer contract
 
 For autonomous (or just disciplined) bug-fixing sessions:
 
 * Repro: `ruby harness/cli.rb run --case <id> --oracle tmux` currently fails.
 * Done when: that passes **and**
-  `ruby harness/cli.rb sweep --cases cases/synthetic --oracle tmux --ratchet ratchet.json`
+  `ruby harness/cli.rb sweep --cases cases --oracle tmux --ratchet ratchet.json`
   reports zero regressions (script-verified, not self-reported).
 * Never edit: `harness/`, `cases/`, `ratchet.json`.
   The failure mode for autonomous fixers is "fixing" the test.

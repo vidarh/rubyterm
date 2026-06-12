@@ -29,9 +29,10 @@ module Harness
     end
 
     # Optional sidecar next to a case file (<case>.meta.json):
-    #   {"skip_checks": ["state"], "reason": "..."}
+    #   {"skip_checks": ["state"], "geometry": "40x10", "reason": "..."}
     # The explicit, reviewable way to record known oracle divergences
-    # (e.g. tmux ignoring a DEC mode we implement per spec).
+    # (e.g. tmux ignoring a DEC mode we implement per spec) and
+    # non-default geometries (cases promoted from recordings).
     def self.case_meta(file)
       meta = file.sub(/\.(bin|txt)\z/, "") + ".meta.json"
       File.exist?(meta) ? JSON.parse(File.read(meta)) : {}
@@ -47,9 +48,13 @@ module Harness
         bytes = File.binread(file)
         meta = case_meta(file)
         case_checks = checks - Array(meta["skip_checks"])
+        ccols, crows = cols, rows
+        if meta["geometry"] && (m = /\A(\d+)x(\d+)\z/.match(meta["geometry"]))
+          ccols, crows = m[1].to_i, m[2].to_i
+        end
         results[id] =
           begin
-            r = Checks.run_case(bytes, cols: cols, rows: rows,
+            r = Checks.run_case(bytes, cols: ccols, rows: crows,
                                 checks: case_checks, oracle: oracle,
                                 chunk: chunk)
               .slice("pass", "class", "signature", "checks")

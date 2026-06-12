@@ -56,8 +56,14 @@ brought to bear interactively).
 
 ## 3. What happens with it (the mechanical part)
 
-For the record, what a debugging session does with your trace — all
-JSON-in/JSON-out, no babysitting required:
+The whole pipeline below is packaged as the **`debug-recording`
+workflow** (`.claude/workflows/debug-recording.js`): tell Claude
+"run the debug-recording workflow on /tmp/bug.rec" and it will
+reproduce, minimize, diagnose, add a red regression case to
+`cases/bugs/`, fix, verify against the ratchet, and clean up the fix —
+leaving the changes uncommitted for review.
+
+Step by step, the same thing by hand:
 
 ```sh
 # locate failures              -> failing byte offsets
@@ -68,7 +74,7 @@ ruby harness/cli.rb extract --rec /tmp/bug.rec --to 196608 --out bug.bin
 ruby harness/cli.rb minimize --case bug.bin --checks redraw --out minimal.bin
 # fix lib/*.rb, then prove it: repro passes, nothing else broke
 ruby harness/cli.rb run --case minimal.bin
-ruby harness/cli.rb sweep --cases cases/synthetic --oracle tmux --ratchet ratchet.json
+ruby harness/cli.rb sweep --cases cases --oracle tmux --ratchet ratchet.json
 ```
 
 The minimal repro then gets committed to `cases/` and added to the

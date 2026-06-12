@@ -45,7 +45,7 @@ A deterministic test harness lives in `harness/` (full guide:
 stdout, exit 0/1. Key commands:
 
 - Run one case: `ruby harness/cli.rb run --case cases/synthetic/dch.bin --oracle tmux`
-- Regression gate: `ruby harness/cli.rb sweep --cases cases/synthetic --oracle tmux --ratchet ratchet.json`
+- Regression gate: `ruby harness/cli.rb sweep --cases cases --oracle tmux --ratchet ratchet.json`
 - Shrink a repro: `ruby harness/cli.rb minimize --case FILE --checks redraw`
 - Record/replay real apps: `ruby harness/cli.rb record --out F.rec -- cmd` / `replay --rec F.rec`
 - Instrumented live terminal: `ruby harness/live.rb` (debug socket; see docs)
