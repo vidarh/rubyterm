@@ -6,7 +6,7 @@ human (or vision model) in the loop — so it can drive fully scripted
 sweep → minimize → cluster → fix pipelines, as well as ordinary
 interactive debugging.
 
-Quick start:
+Quick start (full tour: [harness-quickstart.md](harness-quickstart.md)):
 
 ```sh
 ruby harness/cli.rb run --case cases/synthetic/dch.bin --oracle tmux   # one case
