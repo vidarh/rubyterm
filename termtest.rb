@@ -134,8 +134,8 @@ class RubyTerm
     @pixelh=h
     @window.on_resize(w,h)
 
-    w = w/char_w - 1
-    h = h/char_h - 1
+    w = w/char_w
+    h = h/char_h
     return if w <= 0 || h <= 0 # FIXME: WTF?!?
     #if w != @term.width && h == @term.height
     @buffer.on_resize(w,h)
