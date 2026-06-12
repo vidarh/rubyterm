@@ -143,6 +143,12 @@ module Harness
     # Stable identity of *how* a case fails, for clustering and for the
     # minimizer's fails-the-same-way predicate. Built from the failure
     # class plus the sorted mismatch coordinates of each failing check.
+    #
+    # Render checks (redraw/markers) normalize coordinates relative to
+    # the top-left failing cell: removing prefix tokens shifts content
+    # around the screen, but the *shape* of the incremental-rendering
+    # bug stays the same. Without this normalization ddmin rejects
+    # almost every candidate and minimization barely progresses.
     def self.signature(result)
       return nil if result["pass"]
       sig = [result["class"]]
@@ -150,13 +156,30 @@ module Harness
         next if c["pass"]
         coords =
           case name
-          when "state"  then c["diff"].map { |d| [d["type"], d["row"], d["col"]] }
-          when "redraw" then c["cells"]
-          when "markers" then c["cells"].map { |b| [b["row"], b["col"], b["problem"]] }
+          when "state"
+            c["diff"].map { |d| [d["type"], d["row"], d["col"]] }
+          when "redraw"
+            normalize_cells(c["cells"])
+          when "markers"
+            normalize_markers(c["cells"])
           end
         sig << [name, coords&.sort_by(&:to_s)]
       end
       Digest::SHA256.hexdigest(sig.inspect)[0, 16]
+    end
+
+    def self.normalize_cells(cells)
+      return cells if cells.empty?
+      min_col = cells.map(&:first).min
+      min_row = cells.map(&:last).min
+      cells.map { |col, row| [col - min_col, row - min_row] }
+    end
+
+    def self.normalize_markers(cells)
+      return cells if cells.empty?
+      min_col = cells.map { |b| b["col"] }.min
+      min_row = cells.map { |b| b["row"] }.min
+      cells.map { |b| [b["col"] - min_col, b["row"] - min_row, b["problem"]] }
     end
   end
 end

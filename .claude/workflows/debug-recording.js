@@ -3,8 +3,7 @@ export const meta = {
   description: 'Reproduce, diagnose, red-test, fix and clean up terminal bugs from a pty recording',
   whenToUse: 'When the user provides a .rec file (made with `ruby harness/cli.rb record`) capturing a terminal rendering/state bug and wants it debugged end to end. args: {rec: "path.rec", description: "what looked wrong"} (or just the path as a string).',
   phases: [
-    { title: 'Reproduce', detail: 'replay the recording, collect failing offsets' },
-    { title: 'Localize', detail: 'extract + minimize each distinct failure' },
+    { title: 'Hunt', detail: 'deterministic search: harness hunt scans configs, minimizes repros' },
     { title: 'Diagnose', detail: 'root-cause hypothesis per minimal repro' },
     { title: 'Red test', detail: 'failing regression case in cases/bugs/' },
     { title: 'Fix', detail: 'one fixer per bug, sequential, mechanically gated' },
@@ -40,36 +39,53 @@ harness commands is an expected, reportable outcome - never a reason to
 retry, investigate or fix anything. Do not modify any files except
 those the commands themselves write. Report results verbatim.\n\n`
 
+// Flags that pin down how a repro fails: the check needs its oracle
+// (state is only meaningful against tmux), the geometry, and - for
+// chunk-phase-dependent bugs like split escape/UTF-8 sequences - the
+// feed chunk size.
+const flagsFor = (t) =>
+  `--checks ${t.check} --geometry ${t.geometry}` +
+  (t.chunk ? ` --chunk ${t.chunk}` : '') +
+  (t.check === 'state' ? ' --oracle tmux' : '')
+
 // ------------------------------------------------------------- schemas
-const REPLAY_SCHEMA = {
+const REPRO_PROPS = {
+  check: { type: 'string' },
+  signature: { type: 'string' },
+  case_path: { type: 'string' },
+  meta_path: { type: 'string' },
+  geometry: { type: 'string' },
+  chunk: { type: 'integer' },
+  bytes: { type: 'integer' },
+  minimal_inspect: { type: 'string' },
+  failing_detail: { type: 'string', description: 'the failing_detail object as a JSON string' },
+}
+
+const HUNT_SCHEMA = {
   type: 'object',
-  required: ['pass', 'geometry', 'failures'],
+  required: ['found', 'repros'],
   properties: {
-    pass: { type: 'boolean' },
-    bytes: { type: 'integer' },
-    geometry: { type: 'string', description: 'e.g. "80x24" from the replay JSON' },
-    failures: {
+    found: { type: 'boolean' },
+    note: { type: 'string' },
+    repros: {
       type: 'array',
-      items: {
-        type: 'object',
-        required: ['offset', 'check'],
-        properties: { offset: { type: 'integer' }, check: { type: 'string' } },
-      },
+      items: { type: 'object',
+               required: ['check', 'signature', 'case_path', 'geometry', 'chunk', 'minimal_inspect'],
+               properties: REPRO_PROPS },
     },
   },
 }
 
-const MIN_SCHEMA = {
+const PROBE_SCHEMA = {
   type: 'object',
-  required: ['ok', 'minimal_path', 'minimal_inspect', 'signature', 'check'],
+  required: ['found', 'report'],
   properties: {
-    ok: { type: 'boolean', description: 'false if extract/minimize itself errored' },
-    minimal_path: { type: 'string' },
-    minimal_inspect: { type: 'string', description: 'minimal_inspect field from minimize JSON' },
-    signature: { type: 'string', description: 'result.signature from minimize JSON' },
-    check: { type: 'string' },
-    failing_detail: { type: 'string', description: 'the failing check object from result.checks, as a JSON string' },
-    error: { type: 'string' },
+    found: { type: 'boolean' },
+    case_path: { type: 'string', description: 'path to a deterministic failing case file, if found' },
+    check: { type: 'string', description: 'which check fails on it (redraw/markers/state)' },
+    geometry: { type: 'string' },
+    chunk: { type: 'integer', description: 'the --chunk value it fails under (omit if default)' },
+    report: { type: 'string' },
   },
 }
 
@@ -117,48 +133,47 @@ const FIX_SCHEMA = {
   },
 }
 
-const PROBE_SCHEMA = {
-  type: 'object',
-  required: ['found', 'report'],
-  properties: {
-    found: { type: 'boolean' },
-    case_path: { type: 'string', description: 'path to a deterministic failing case file, if found' },
-    check: { type: 'string', description: 'which check fails on it (redraw/markers/state)' },
-    geometry: { type: 'string' },
-    report: { type: 'string' },
-  },
-}
-
-const verifyPrompt = (cases, geometry) => MECH +
+const verifyPrompt = (cases) => MECH +
   `Verification gate. Run, in order:
-1. ${cases.map(c => `${CLI} run --case ${c.path} --checks ${c.check} --geometry ${c.geometry || geometry}`).join('\n   ')}
+1. ${cases.map(c => `${CLI} run --case ${c.case_path} ${flagsFor(c)}`).join('\n   ')}
    (case_pass = ALL exit 0)
 2. ${CLI} sweep --cases cases --oracle tmux --ratchet ratchet.json   (ratchet_pass = exit 0)
 3. rake test   (tests_pass = "0 failures, 0 errors")
 On any failure, copy the relevant failing diff/output into notes verbatim.`
 
-// ============================================================ Reproduce
-phase('Reproduce')
-log(`replaying ${REC}`)
-const replay = await agent(MECH +
-  `Run: ${CLI} replay --rec ${REC} --checks redraw,markers
-Report pass, bytes, geometry and the failures array from the JSON output.`,
-  { schema: REPLAY_SCHEMA, label: 'replay' })
-if (!replay) throw new Error('replay agent failed')
+// ================================================================ Hunt
+// Reproduction and minimization are fully deterministic: one harness
+// command scans configurations (chunk sizes, offset checkpoints,
+// end-state vs oracle) and emits minimal repros. The agent only
+// relays JSON.
+phase('Hunt')
+log(`hunting ${REC}`)
+const hunt = await agent(MECH +
+  `Run: ${CLI} hunt --rec ${REC}
+(This scans feed-chunk sizes and check offsets, then minimizes; it can take
+several minutes. Use a generous Bash timeout, e.g. 600000ms.)
+Report found, note, and the repros array verbatim (failing_detail as a JSON
+string).`,
+  { schema: HUNT_SCHEMA, label: 'hunt' })
+if (!hunt) throw new Error('hunt agent failed')
 
-let targets = []
-if (replay.pass) {
-  log('automated checks pass; probing interactively from the user description')
+let repros = (hunt.repros || []).slice(0, MAX_BUGS)
+
+if (repros.length === 0) {
+  // Nothing machine-checkable: fall back to a judgment probe driven
+  // by the user's description.
+  log('hunt found nothing mechanically; probing from the user description')
   const probe = await agent(
-    `A terminal emulator bug was seen while recording ${REC}, but the automated
-replay checks (redraw, markers) pass. User's description of the glitch: "${DESC}".
+    `A terminal emulator bug was seen while recording ${REC}, but the harness's
+deterministic hunt (${CLI} hunt --rec ${REC}) found nothing${hunt.note ? ` (note: ${hunt.note})` : ''}.
+User's description of the glitch: "${DESC}".
 Read docs/harness-quickstart.md and docs/harness.md. Investigate: replay with a
 small --every; use "${CLI} extract" to cut the stream at suspicious points and
 "${CLI} run --case ... --dump" / --oracle tmux to inspect screens and state
-around them; relate what you see to the description. Goal: produce ONE
-deterministic failing case file under /tmp/ (state, redraw or markers check).
-Do not modify the repository. If you cannot make a failing case, say so in the
-report with what you observed and where you looked.`,
+around them; consider mid-stream resizes (hunt skips the state oracle when the
+recording resizes); relate what you see to the description. Goal: produce ONE
+deterministic failing case file under /tmp/. Do not modify the repository.
+If you cannot make a failing case, say so in the report with what you observed.`,
     { schema: PROBE_SCHEMA, label: 'probe' })
   if (!probe || !probe.found) {
     return {
@@ -167,38 +182,19 @@ report with what you observed and where you looked.`,
       advice: 'The recording did not yield a machine-checkable failure. Debug interactively from the trace and the user description.',
     }
   }
-  targets = [{ offset: null, check: probe.check || 'redraw', path: probe.case_path, geometry: probe.geometry || replay.geometry }]
-} else {
-  // First failing offset per check type; minimization dedupes the rest.
-  for (const chk of ['redraw', 'markers']) {
-    const f = replay.failures.find(x => x.check === chk)
-    if (f) targets.push({ offset: f.offset, check: chk, geometry: replay.geometry })
-  }
-  log(`failing offsets: ${replay.failures.map(f => `${f.offset}(${f.check})`).join(', ')}`)
+  const t = { check: probe.check || 'redraw', geometry: probe.geometry || '80x24', chunk: probe.chunk }
+  const min = await agent(MECH +
+    `Run: ${CLI} minimize --case ${probe.case_path} ${flagsFor(t)} --out /tmp/wf-min-probe.bin
+From the minimize JSON report case_path=/tmp/wf-min-probe.bin, minimal_inspect,
+signature (= result.signature), check=${t.check}, geometry=${t.geometry},
+chunk=${t.chunk || 128}, bytes (= minimal_bytes), and failing_detail (the
+failing check object from result.checks, as a JSON string).`,
+    { schema: { type: 'object', required: ['check', 'signature', 'case_path', 'geometry', 'chunk', 'minimal_inspect'], properties: REPRO_PROPS },
+      label: 'minimize:probe' })
+  if (!min) throw new Error('probe produced a case but minimization failed')
+  repros = [min]
 }
-
-// ============================================================= Localize
-phase('Localize')
-const minimized = (await parallel(targets.map((t, i) => () => agent(MECH +
-  (t.path
-    ? `A failing case already exists at ${t.path}.
-Run: ${CLI} minimize --case ${t.path} --checks ${t.check} --geometry ${t.geometry} --out /tmp/wf-min-${i}.bin`
-    : `Run, in order:
-1. ${CLI} extract --rec ${REC} --to ${t.offset} --out /tmp/wf-cut-${i}.bin
-2. ${CLI} minimize --case /tmp/wf-cut-${i}.bin --checks ${t.check} --geometry ${t.geometry} --out /tmp/wf-min-${i}.bin`) +
-  `
-From the minimize JSON report: minimal_path=/tmp/wf-min-${i}.bin, minimal_inspect,
-result.signature, and the failing check object from result.checks (as a JSON
-string) in failing_detail. ok=false (with error) only if a command errored in a
-way that produced no minimize JSON.`,
-  { schema: MIN_SCHEMA, label: `minimize:${t.check}`, phase: 'Localize' })
-  .then(m => m && m.ok ? { ...m, geometry: t.geometry } : (log(`minimize failed for ${t.check}: ${m && m.error}`), null))
-))).filter(Boolean)
-
-const seen = new Set()
-const repros = minimized.filter(m => !seen.has(m.signature) && seen.add(m.signature)).slice(0, MAX_BUGS)
-if (repros.length === 0) throw new Error('reproduced, but no failure survived minimization - inspect /tmp/wf-cut-*.bin manually')
-log(`${repros.length} distinct bug(s) after dedup by signature`)
+repros.forEach(r => log(`repro: ${r.check}@chunk=${r.chunk} ${r.bytes} bytes (${r.signature})`))
 
 // ============================================================= Diagnose
 phase('Diagnose')
@@ -207,23 +203,28 @@ const diagnosed = (await parallel(repros.map(r => () => agent(
 
 Minimal repro (Ruby string syntax): ${r.minimal_inspect}
 Failing check: ${r.check}. Failure detail: ${r.failing_detail}
-Reproduce with: ${CLI} run --case ${r.minimal_path} --checks ${r.check} --geometry ${r.geometry} --dump
+It fails under this exact configuration (chunk size matters - chunk-split
+escape/UTF-8 sequences are a common bug class):
+  ${CLI} run --case ${r.case_path} ${flagsFor(r)} --dump
 
-Background: docs/harness.md (check semantics: "state" = grid wrong in lib/term.rb's
-interpretation; "redraw"/"markers" = grid right but incremental rendering wrong,
-usually lib/trackchanges.rb / lib/windowadapter.rb / the scroll-blit paths),
+Background: docs/harness.md (check semantics: "state" = wrong grid - parsing,
+interpretation or decoding, see lib/term.rb and lib/utf8decoder.rb; "redraw"/
+"markers" = grid right but incremental rendering wrong, usually
+lib/trackchanges.rb / lib/windowadapter.rb / scroll-blit paths),
 docs/state-schema.md (dump format). The render sink under test is modelled by
 harness/lib/virtualwindow.rb, which mirrors lib/window.rb's drawing ops.
 
-Trace the repro bytes through the code (lib/term.rb handle_csi/handle_escape/
-putchar -> lib/termbuffer.rb -> lib/trackchanges.rb -> lib/windowadapter.rb) and
-identify the root cause: the mechanism, not just the symptom. Vary the repro
-(${CLI} run on edited copies under /tmp/) to confirm or kill your hypothesis
-before settling.`,
+Trace the repro bytes through the code (lib/utf8decoder.rb -> lib/term.rb
+feed/putchar/handle_csi/handle_escape -> lib/termbuffer.rb ->
+lib/trackchanges.rb -> lib/windowadapter.rb) and identify the root cause: the
+mechanism, not just the symptom. Vary the repro (${CLI} run on edited copies
+under /tmp/, varying --chunk) to confirm or kill your hypothesis before
+settling.`,
   { schema: HYP_SCHEMA, label: `diagnose:${r.check}`, phase: 'Diagnose' })
   .then(h => h ? { ...r, hyp: h } : null)
 ))).filter(Boolean)
 diagnosed.forEach(d => log(`hypothesis (${d.hyp.confidence}): ${d.hyp.summary}`))
+if (diagnosed.length === 0) throw new Error('no diagnosis succeeded')
 
 // ============================================================= Red test
 phase('Red test')
@@ -232,9 +233,11 @@ for (const d of diagnosed) {
   const red = await agent(MECH +
     `Add a regression case for a confirmed bug (root cause: ${d.hyp.summary}).
 1. Pick a free filename cases/bugs/${d.hyp.suggested_case_name}.bin (append -2
-   etc. if taken) and copy ${d.minimal_path} to it.
-2. ${d.geometry !== '80x24' ? `Write cases/bugs/<name>.meta.json: {"geometry": "${d.geometry}", "reason": "promoted from recording; fails only at this geometry"}.` : 'No meta sidecar needed (default geometry).'}
-3. Run: ${CLI} run --case cases/bugs/<name>.bin --checks ${d.check} --geometry ${d.geometry}
+   etc. if taken) and copy ${d.case_path} to it.
+2. ${(d.geometry !== '80x24' || (d.chunk && d.chunk !== 128))
+      ? `Copy ${d.meta_path || 'the repro\'s .meta.json sidecar'} to cases/bugs/<name>.meta.json (it records geometry/chunk; keep only non-default fields plus a one-line reason).`
+      : 'No meta sidecar needed (default geometry and chunk).'}
+3. Run: ${CLI} run --case cases/bugs/<name>.bin ${flagsFor(d)}
    red = it exits 1 (the bug is still unfixed at this point, so it must be red).
 Report case_path, case_id (bugs/<name>), red, and the signature from the run JSON.`,
     { schema: RED_SCHEMA, label: `red:${d.hyp.suggested_case_name}`, phase: 'Red test' })
@@ -260,7 +263,7 @@ for (const bug of redCases) {
 Root-cause hypothesis (${bug.hyp.confidence} confidence): ${bug.hyp.summary}
 Mechanism: ${bug.hyp.mechanism}
 Suspect locations: ${bug.hyp.files.join(', ')}
-Repro: ${CLI} run --case ${bug.case_path} --checks ${bug.check} --geometry ${bug.geometry}   (currently fails)
+Repro: ${CLI} run --case ${bug.case_path} ${flagsFor(bug)}   (currently fails)
 ${attempt > 1 ? `Previous attempt did not verify. Verifier notes:\n${verdict && verdict.notes}\n` : ''}
 Rules (binding):
 - Fix the cause in production code (lib/, termtest.rb). Trust the hypothesis only
@@ -275,7 +278,7 @@ Rules (binding):
 The pipeline verifies independently; misreporting wastes a fix attempt.`,
       { schema: FIX_SCHEMA, label: `fix:${bug.hyp.suggested_case_name}`, phase: 'Fix' })
 
-    verdict = await agent(verifyPrompt([{ path: bug.case_path, check: bug.check, geometry: bug.geometry }], '80x24'),
+    verdict = await agent(verifyPrompt([bug]),
       { schema: VERIFY_SCHEMA, label: `verify:${bug.hyp.suggested_case_name}`, phase: 'Fix' })
     if (verdict && verdict.case_pass && verdict.ratchet_pass && verdict.tests_pass) break
     log(`fix attempt ${attempt} for ${bug.hyp.suggested_case_name} failed verification`)
@@ -312,14 +315,13 @@ defensive code for impossible states, stray comments; (2) simplify per CLAUDE.md
 style (terse but readable; the project values small code); (3) keep behaviour
 identical otherwise. NEVER touch harness/, cases/, ratchet.json.
 After each change re-run the fixed case(s):
-${fixed.map(f => `${CLI} run --case ${f.case_path} --checks ${f.check} --geometry ${f.geometry}`).join('\n')}
+${fixed.map(f => `${CLI} run --case ${f.case_path} ${flagsFor(f)}`).join('\n')}
 and finish with rake test. If a simplification breaks anything, undo it
 (git checkout + git apply /tmp/wf-verified-fix.diff restores the verified state).
 If the diff is already minimal, change nothing and say so.`,
     { label: 'simplify', phase: 'Cleanup' })
 
-  const finalVerdict = await agent(
-    verifyPrompt(fixed.map(f => ({ path: f.case_path, check: f.check, geometry: f.geometry })), '80x24'),
+  const finalVerdict = await agent(verifyPrompt(fixed),
     { schema: VERIFY_SCHEMA, label: 'verify:final', phase: 'Cleanup' })
 
   if (finalVerdict && finalVerdict.case_pass && finalVerdict.ratchet_pass && finalVerdict.tests_pass) {

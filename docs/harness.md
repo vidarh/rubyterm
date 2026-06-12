@@ -151,13 +151,29 @@ the test case:
 
 ```sh
 ruby harness/cli.rb record --out emacs.rec -- emacs -nw   # use it until it glitches
-ruby harness/cli.rb replay --rec emacs.rec --every 65536 --checks redraw,markers
+ruby harness/cli.rb hunt --rec emacs.rec                  # find + minimize the bug(s)
 ```
 
-Replay feeds only the output stream (deterministic by construction),
-honours resize records, runs checks every `--every` bytes — *outside*
-DEC 2026 synchronized-update blocks, which mark frames as
-intentionally incomplete — and reports **all** failing offsets, since
+`hunt` is the deterministic search from "recording of a glitch" to
+"minimal repro + the exact configuration it fails under". It scans
+feed-chunk sizes (default, then progressively smaller — escape/UTF-8
+*reassembly* bugs are chunk-phase dependent and only fire when a
+sequence is split across reads), replaying with redraw+markers checks
+at intervals and diffing the end state against the tmux oracle per
+configuration; it then cuts the stream at each failing offset and
+ddmins it under that exact configuration, preferring the in-process
+checks (a state minimization runs tmux on every iteration). Output:
+minimal repros plus ready-to-promote `.meta.json` sidecars recording
+geometry and chunk. Exit 0 = found something.
+
+The pieces are also available individually: `replay` (checks at
+`--every`-byte offsets), `extract` (cut the output stream at a byte
+offset), `minimize`. Replay is record-faithful by default — each
+recorded pty read is fed as one chunk; with `--chunk N` it slices
+continuously across records, byte-for-byte the same as `run`/
+`minimize` on an extracted stream, so failures transfer. Checks are
+suppressed inside DEC 2026 synchronized-update blocks (intentionally
+incomplete frames), and **all** failing offsets are reported, since
 stale-rendering failures can be transient (a later clear masks them).
 Input bytes are recorded too, never replayed: they tell you what query
 responses the app saw when a recording behaves oddly.
@@ -190,22 +206,23 @@ an external driver would need.
 recording-to-fixed-bug pipeline as a Claude Code workflow
 (`args: {rec: "path.rec", description: "what looked wrong"}`):
 
-1. **Reproduce** — replay with redraw+markers checks; if the automated
-   checks pass, an investigator agent probes interactively from the
-   user's description.
-2. **Localize** — extract at the failing offsets, minimize each,
-   dedupe by failure signature (up to `max_bugs`, default 3).
-3. **Diagnose** — one analyst per repro traces the bytes through the
-   code and must confirm/kill its hypothesis by varying the repro.
-4. **Red test** — the minimal repro is added as
-   `cases/bugs/<name>.bin` (+ geometry sidecar if non-default) and
-   mechanically confirmed to fail.
-5. **Fix** — one fixer per bug, sequential, two attempts; every
+1. **Hunt** — reproduction and minimization are one deterministic
+   harness command (`hunt`, above); the agent only relays its JSON.
+   Only if hunt finds nothing does an investigator agent probe
+   interactively from the user's description (then hands any case it
+   finds back to the mechanical minimizer).
+2. **Diagnose** — one analyst per repro (capped by `max_bugs`,
+   default 3) traces the bytes through the code and must confirm/kill
+   its hypothesis by varying the repro.
+3. **Red test** — the minimal repro is added as
+   `cases/bugs/<name>.bin` (+ sidecar recording geometry/chunk if
+   non-default) and mechanically confirmed to fail.
+4. **Fix** — one fixer per bug, sequential, two attempts; every
    attempt is gated by an independent mechanical verification (case
    green, ratchet sweep clean, `rake test` green — fixers never grade
    themselves). Failed fixes are reverted; the red case stays as
    backlog.
-6. **Cleanup** — a reviewer minimises the fix diff (verified state
+5. **Cleanup** — a reviewer minimises the fix diff (verified state
    snapshotted first), final verification, ratchet update. Changes are
    left uncommitted for review.
 

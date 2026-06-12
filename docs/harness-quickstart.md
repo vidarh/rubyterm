@@ -42,17 +42,19 @@ That's all the harness needs. A useful first probe, which also tells
 you whether the bug is automatically detectable:
 
 ```sh
-ruby harness/cli.rb replay --rec /tmp/bug.rec --checks redraw,markers
+ruby harness/cli.rb hunt --rec /tmp/bug.rec
 ```
 
-This replays the byte stream through a headless copy of the terminal
-and re-checks rendering at intervals. `"pass": false` with a list of
-byte offsets = the bug is captured and machine-checkable; the rest of
-the pipeline (below) is mechanical. `"pass": true` but you saw a
+This deterministically searches for the bug — replaying through a
+headless copy of the terminal with rendering checks at intervals,
+varying the feed chunk size (split escape/UTF-8 sequences only fail at
+some sizes), diffing the end state against tmux — and, on a hit,
+shrinks it to a minimal repro plus the exact configuration it fails
+under. `"found": true` with repros = captured; the rest of the
+pipeline (below) is mechanical. `"found": false` but you saw a
 glitch = still report it — the trace plus your description is what a
-debugging session starts from (the checks only cover some bug
-classes, and the state oracle, screen dumps at offsets, etc. can be
-brought to bear interactively).
+debugging session starts from (the automated checks only cover some
+bug classes).
 
 ## 3. What happens with it (the mechanical part)
 
@@ -66,14 +68,12 @@ leaving the changes uncommitted for review.
 Step by step, the same thing by hand:
 
 ```sh
-# locate failures              -> failing byte offsets
-ruby harness/cli.rb replay --rec /tmp/bug.rec --checks redraw,markers
-# cut the stream at a failure  -> a standalone case file
-ruby harness/cli.rb extract --rec /tmp/bug.rec --to 196608 --out bug.bin
-# shrink to a minimal repro    -> usually a few hundred bytes or less
-ruby harness/cli.rb minimize --case bug.bin --checks redraw --out minimal.bin
+# find + shrink the bug        -> minimal repro + failing configuration
+ruby harness/cli.rb hunt --rec /tmp/bug.rec
+#   (hunt = replay w/ checks at offsets, chunk-size variation, extract
+#    at failing offsets, minimize; each piece is also its own command)
 # fix lib/*.rb, then prove it: repro passes, nothing else broke
-ruby harness/cli.rb run --case minimal.bin
+ruby harness/cli.rb run --case /tmp/hunt-redraw-<sig>.bin --checks redraw
 ruby harness/cli.rb sweep --cases cases --oracle tmux --ratchet ratchet.json
 ```
 

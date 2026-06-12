@@ -14,6 +14,10 @@
 #   ruby harness/cli.rb record   --out FILE -- cmd args...
 #   ruby harness/cli.rb replay   --rec FILE [--every N] [--checks redraw,markers]
 #   ruby harness/cli.rb extract  --rec FILE --out FILE [--to BYTE_OFFSET]
+#   ruby harness/cli.rb hunt     --rec FILE [--checks ...] [--chunks 128,4,1]
+#                                [--every N] [--out DIR]
+#   ruby harness/cli.rb autohunt --rec FILE [--out DIR] [--timeout SECONDS]
+#                                [--geometries 3x3,5x5,...] [--checks redraw,markers]
 
 require 'optparse'
 require 'json'
@@ -54,9 +58,12 @@ parser = OptionParser.new do |o|
   o.on("--checks LIST") { |v| opts[:checks] = v.split(",") }
   o.on("--oracle NAME") { |v| opts[:oracle] = v }
   o.on("--geometry WxH") { |v| opts[:cols], opts[:rows] = parse_geometry(v) }
-  o.on("--chunk N", Integer) { |v| opts[:chunk] = v }
-  o.on("--every N", Integer) { |v| opts[:every] = v }
+  o.on("--chunk N", Integer) { |v| opts[:chunk] = v; opts[:chunk_given] = true }
+  o.on("--every N", Integer) { |v| opts[:every] = v; opts[:every_given] = true }
   o.on("--to N", Integer) { |v| opts[:to] = v }
+  o.on("--chunks LIST") { |v| opts[:chunks] = v.split(",").map { |c| Integer(c) } }
+  o.on("--geometries LIST") { |v| opts[:geometries] = v.split(",") }
+  o.on("--timeout SECONDS", Integer) { |v| opts[:timeout] = v }
   o.on("--dump") { opts[:dump] = true }
   o.on("--out FILE") { |v| opts[:out] = v }
   o.on("--rec FILE") { |v| opts[:rec] = v }
@@ -147,16 +154,36 @@ when "extract"
   emit({ "rec" => opts[:rec], "out" => opts[:out],
          "bytes" => bytes.bytesize }, true)
 
+when "hunt"
+  abort "hunt: --rec required" if !opts[:rec]
+  result = Harness::Hunt.hunt(
+    opts[:rec], checks: opts[:checks],
+    chunks: opts[:chunks] || Harness::Hunt::DEFAULT_CHUNKS,
+    every: opts[:every_given] ? opts[:every] : nil,
+    out_dir: opts[:out] || "/tmp")
+  emit(result, result["found"])
+
+when "autohunt"
+  abort "autohunt: --rec required" if !opts[:rec]
+  result = Harness::AutoHunt.run(
+    opts[:rec],
+    out_dir: opts[:out],
+    geometries: opts[:geometries] || Harness::AutoHunt::DEFAULT_GEOMETRIES,
+    checks: opts[:checks],
+    timeout: opts[:timeout] || Harness::AutoHunt::DEFAULT_TIMEOUT)
+  emit(result, !result["repros"].empty?)
+
 when "replay"
   abort "replay: --rec required" if !opts[:rec]
   result = Harness::Replay.replay(
     opts[:rec], every: opts[:every], cols: opts[:cols], rows: opts[:rows],
-    checks: opts[:checks] & %w[redraw markers], chunk: opts[:chunk])
+    checks: opts[:checks] & %w[redraw markers],
+    chunk: opts[:chunk_given] ? opts[:chunk] : nil)
   result["rec"] = opts[:rec]
   emit(result, result["pass"])
 
 else
-  warn "usage: harness/cli.rb {run|sweep|minimize|tokenize|record|replay|extract} [options]"
+  warn "usage: harness/cli.rb {run|sweep|minimize|tokenize|record|replay|extract|hunt|autohunt} [options]"
   warn "       see docs/harness.md"
   exit 2
 end
