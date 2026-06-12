@@ -41,8 +41,10 @@ class Controller
   end
 
   def device_report
-    # Minimum needed to prevent apps expecting a response from hanging
-    @wr.write("\x1bP!|00000000")
+    # Minimum needed to prevent apps expecting a response from hanging.
+    # Terminate the DCS with ST so the echoed response is consumed rather
+    # than leaking as visible text.
+    @wr.write("\x1bP!|00000000\x1b\\")
   end
 
   def report_size(w, h) = (@master.winsize = [h + 1, w])

@@ -42,7 +42,7 @@ module Harness
     # # Term's responder interface (captures replies the live terminal
     # # would write to the pty)
     def report_position(x, y) = @responses << "\e[#{y + 1};#{x + 1}R"
-    def device_report         = @responses << "\eP!|00000000"
+    def device_report         = @responses << "\eP!|00000000\e\\"
 
     # Feed bytes through the same per-chunk cycle the live terminal's
     # process_queue uses (clear cursor, interpret, draw cursor, flush).

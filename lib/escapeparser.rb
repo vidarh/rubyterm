@@ -19,6 +19,9 @@ class EscapeParser
         @state = :csi
       when ']'
         @state = :oc
+      when 'P', 'X', '^', '_'
+        # DCS, SOS, PM, APC - string sequences terminated by ST (ESC \) or BEL
+        @state = :string
       when /\w|[=>|}~6-9]/
         @state = :complete
       end
@@ -29,6 +32,23 @@ class EscapeParser
       if ch == 7 then @state = :complete
       elsif ch < 32 then return false
       else @str << ch.chr
+      end
+    when :string
+      if ch == 7
+        @state = :complete
+      elsif ch == 27
+        @state = :string_esc
+      elsif ch < 32
+        return false
+      else
+        @str << ch.chr
+      end
+    when :string_esc
+      if ch.chr == '\\'
+        @state = :complete
+      else
+        @str << 27.chr << ch.chr
+        @state = :string
       end
     else
       return false

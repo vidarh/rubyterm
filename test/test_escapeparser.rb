@@ -72,4 +72,28 @@ class TestEscapeParser < Minitest::Test
     assert @parser.complete?
     assert_equal "D", @parser.str
   end
+
+  def test_dcs_terminated_by_st
+    skip "EscapeParser not available" unless @parser
+
+    # ESC P ! | 00000000 ESC \ (DA2-style DCS response)
+    "\eP!|00000000\e\\".each_byte do |b|
+      @parser.put(b)
+    end
+
+    assert @parser.complete?
+    assert_equal "P!|00000000", @parser.str
+  end
+
+  def test_dcs_terminated_by_bel
+    skip "EscapeParser not available" unless @parser
+
+    # ESC P ! | 00000000 BEL
+    "\eP!|00000000\a".each_byte do |b|
+      @parser.put(b)
+    end
+
+    assert @parser.complete?
+    assert_equal "P!|00000000", @parser.str
+  end
 end
