@@ -36,8 +36,7 @@ class RubyTerm
   LEFTMOST=0
   
   attr_reader :blink_state, :rblink_state
-  
-  def charset = @g[@gl] || DefaultCharset
+
   def char_w  = @adapter.char_w
   def char_h  = @adapter.char_h
   def term_width = @term.width
@@ -65,9 +64,6 @@ class RubyTerm
     
     @window = Window.new(fonts: @config[:fonts], fontsize: @config[:fontsize])
     @adapter = WindowAdapter.new(@window, self)
-
-    @gl = 0
-    @g = [DefaultCharset,nil,nil,nil] # Alternate charsets
 
     # Yes, this is "bad" and we should define our
     # own, however, I'd prefer to match rxvt or similar
@@ -159,129 +155,23 @@ class RubyTerm
   def fg = @term.fg
   def bg = @term.bg
 
-  # # Editing operations
-
-
-  # # Handle escapes
-
-
-  def origin =  @term.origin_mode ? @buffer.scroll_start || 0 : 0
-  def bottom =  @term.origin_mode ? @buffer.scroll_end || @term.height : @term.height
-  def clampw(i) = i.clamp(0,@term.width-1)
-  def clamph(i) = i.clamp(origin,bottom)
-
-
-  def report_position = @controller.report_position(@term.x,@term.y)
-  def device_report   = @controller.device_report
-
-  def handle_escape(ch)
-    return false if !@term.esc.complete?
-    s = @term.esc.str
-    if s[0] == ?[
-      @term.handle_csi(s) {|op| send(op) }
-      @term.esc = nil
-      return
-    end
-
-    case s
-    when "D"; @term.y += 1
-    when "E"; @term.y += 1; @term.x = 0
-    when "H"; @term.tabs = (@term.tabs << @x).sort.uniq
-    when "M"
-      @term.y -= 1
-      if @term.y < 0
-        @term.y=0
-        @term.insert_lines(1)
-      end
-    when "#3"; @buffer.set_lineattrs(@term.y, :dbl_upper) # FIXME: Flags
-    when "#4"; @buffer.set_lineattrs(@term.y, :dbl_lower) # FIXME: Flags
-    when "#5"; @buffer.set_lineattrs(@term.y, 0) # FIXME: Flags
-    when "#6"; @buffer.set_lineattrs(@term.y, :dbl_single) # FIXME: Flags
-    when "#8"; @term.decaln
-    when "(B"; @g[0] = DefaultCharset
-    when ")B"; @g[1] = DefaultCharset
-    when "(0"; @g[0] = GraphicsCharset
-    when ")0"; @g[1] = GraphicsCharset        
-    when "7";  @saved = [@term.x,@term.y,@gl,@gr,@g.dup]
-    when "8";  @term.x,@term.y,@gl,@gr,@g = *Array(@saved)
-    else
-      p @term.esc
-    end
-
-    @term.esc = nil
-  end
-
-  def handle_control(ch)
-    case ch
-    when 1,2;
-    when 7; p :bell
-    when 8;
-      if    @term.x >= @term.width then @term.x -= 2
-      elsif @term.x > 0 then @term.x -= 1
-      end
-    when 9
-      if i = @term.tabs.index {|t| t>@term.x}
-        t = @term.tabs[i]
-        # FIXME: This is only right behaviour if wrap is off, is it not?
-        @term.x = clampw(t) if t > @term.x
-      end
-    when 10, 11
-      @term.linefeed
-    when 12; @term.x = 0; @term.y = 0
-    when 13; @term.x = 0
-    when 14; @gl = 1
-    when 15; @gl = 0
-    when 16..26;
-    when 27; @term.esc = EscapeParser.new # FIXME: Is this right if !@esc.nil? ?
-    when 28..31;
-    end
-  end
-  
-  def putchar(ch)
-    ox,oy=@term.x,@term.y
-    if ch.is_a?(String)
-      STDERR.puts "WARNING: Should be int"
-      ch = ch.ord
-    end
-    if @term.esc&.put(ch)
-      handle_escape(ch)
-    elsif ch.ord < 32
-      handle_control(ch)
-    else
-      @term.wrap_if_needed
-      @term.scroll_if_needed
-      return @term.delete if ch == 127
-
-      @buffer.set(@term.x, @term.y, charset[ch], fg, bg, @term.mode)
-      @term.y = clamph(@term.y)
-      @term.x += 1
-      @term.scroll_if_needed
-    end
-  end
-
+  # Escape/control/character interpretation lives in Term (lib/term.rb).
+  # RubyTerm only owns the X11 window, the pty controller and the
+  # threading; this keeps the terminal core testable headlessly (see
+  # harness/).
 
   def write(str)
     @queue << str
   end
 
-  def process_queue
-    str = @queue.shift
-    @decoder ||= UTF8Decoder.new
-    @decoder << str
+  def process_queue = process_chunk(@queue.shift)
 
+  def process_chunk(str)
     # FIXME: Could be smarter about this; it's only needed if the
     # first character being written won't clear the same square.
     @term.clear_cursor
 
-    @decoder.each do|c|
-      begin
-        putchar(c.ord)
-      rescue Exception => e
-        p [c, e, @decoder]
-        p e.backtrace
-        putchar(' ')
-      end
-    end
+    @term.feed(str)
 
     # FIXME: Do this only when a) queue is empty or b)
     # a certain amount of time has elapsed.
@@ -509,7 +399,8 @@ class RubyTerm
 
     @controller = Controller.new(self, @config)
     @controller.run(*args)
-   
+    @term.responder = @controller
+
     @lastblink  ||= Time.now
     @lastrblink ||= Time.now
 
@@ -553,4 +444,4 @@ class RubyTerm
   end
 end
 
-RubyTerm.new(ARGV).run(ARGV)
+RubyTerm.new(ARGV).run(ARGV) if $0 == __FILE__

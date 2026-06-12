@@ -1,4 +1,6 @@
 require_relative 'escapeparser'
+require_relative 'utf8decoder'
+require_relative 'charsets'
 
 # This class is a start of untangling/extracting the *display* side
 # of RubyTerm from everything else. Currently it still indirectly
@@ -29,6 +31,12 @@ class Term
 
   attr_accessor :x, :y, :wraparound, :cursor, :origin_mode,
     :mouse_mode, :mouse_reporting, :tabs, :esc, :mode, :mouse_buttons
+
+  # Object receiving terminal query replies (DSR/DA). Must respond to
+  # #report_position(x,y) and #device_report. In the live terminal this
+  # is the Controller (which writes to the pty); in the test harness it
+  # is a recorder capturing responses.
+  attr_accessor :responder
 
   def initialize(buffer, adapter)
     @buffer = buffer
@@ -77,7 +85,18 @@ class Term
     @mouse_reporting = nil
     # Currently pressed mouse buttons.
     @mouse_buttons = nil
+
+    # Character set state (GL/GR designation per vt100/vt220).
+    @gl = 0
+    @gr = nil # FIXME: GR shifting not implemented
+    @g = [DefaultCharset, nil, nil, nil]
+    @saved = nil # Saved cursor state (ESC 7 / ESC 8)
+
+    @decoder = UTF8Decoder.new
+    @responder = nil
   end
+
+  def charset = @g[@gl] || DefaultCharset
 
   def width  = @term_width
   def height = @term_height
@@ -275,7 +294,7 @@ class Term
     # FIXME: Need to *either* resize window or rescale font
     # to work properly.
     # FIXME: Verify if clear_screen is appropriate.
-    resize(set ? 132 : 80, height)
+    resize(w, height)
     clear_screen
   end
 
@@ -395,12 +414,123 @@ class Term
 
 
   # This is the *preferred* public interface:
+  #
+  # Feed raw bytes (as read from the pty) into the terminal. Handles
+  # UTF-8 decoding, control characters and escape sequences. This is
+  # synchronous: when it returns, all bytes have been interpreted and
+  # the buffer updated (rendering may still be batched in TrackChanges
+  # until #draw_flush is called on the buffer).
+  def feed(str)
+    @decoder << str
+    @decoder.each do |c|
+      begin
+        putchar(c.ord)
+      rescue Exception => e
+        p [c, e, @decoder]
+        p e.backtrace
+        putchar(32)
+      end
+    end
+  end
+  alias write feed
 
-  def write(str)
+  def putchar(ch)
+    if ch.is_a?(String)
+      STDERR.puts "WARNING: Should be int"
+      ch = ch.ord
+    end
+    if @esc&.put(ch)
+      handle_escape(ch)
+    elsif ch < 32
+      handle_control(ch)
+    else
+      wrap_if_needed
+      scroll_if_needed
+      return delete if ch == 127
+
+      @buffer.set(@x, @y, charset[ch], fg, bg, @mode)
+      @y = clamph(@y)
+      @x += 1
+      scroll_if_needed
+    end
+  end
+
+  def handle_escape(ch)
+    return false if !@esc.complete?
+    s = @esc.str
+    if s[0] == ?[
+      handle_csi(s) {|op| respond(op) }
+      @esc = nil
+      return
+    end
+
+    case s
+    when "D"; @y += 1
+    when "E"; @y += 1; @x = 0
+    when "H"; @tabs = (@tabs << @x).sort.uniq
+    when "M"
+      @y -= 1
+      if @y < 0
+        @y = 0
+        insert_lines(1)
+      end
+    when "#3"; @buffer.set_lineattrs(@y, :dbl_upper) # FIXME: Flags
+    when "#4"; @buffer.set_lineattrs(@y, :dbl_lower) # FIXME: Flags
+    when "#5"; @buffer.set_lineattrs(@y, 0) # FIXME: Flags
+    when "#6"; @buffer.set_lineattrs(@y, :dbl_single) # FIXME: Flags
+    when "#8"; decaln
+    when "(B"; @g[0] = DefaultCharset
+    when ")B"; @g[1] = DefaultCharset
+    when "(0"; @g[0] = GraphicsCharset
+    when ")0"; @g[1] = GraphicsCharset
+    when "7";  @saved = [@x,@y,@gl,@gr,@g.dup]
+    when "8";  @x,@y,@gl,@gr,@g = *Array(@saved)
+    else
+      p @esc
+    end
+
+    @esc = nil
+  end
+
+  def handle_control(ch)
+    case ch
+    when 1,2;
+    when 7; p :bell
+    when 8;
+      if    @x >= width then @x -= 2
+      elsif @x > 0 then @x -= 1
+      end
+    when 9
+      if i = @tabs.index {|t| t > @x}
+        t = @tabs[i]
+        # FIXME: This is only right behaviour if wrap is off, is it not?
+        @x = clampw(t) if t > @x
+      end
+    when 10, 11
+      linefeed
+    when 12; @x = 0; @y = 0
+    when 13; @x = 0
+    when 14; @gl = 1
+    when 15; @gl = 0
+    when 16..26;
+    when 27; @esc = EscapeParser.new # FIXME: Is this right if !@esc.nil? ?
+    when 28..31;
+    end
   end
 
   private
 
+  # Dispatch a terminal query reply request (yielded by handle_csi)
+  # to the responder, if one is attached.
+  def respond(op)
+    return if !@responder
+    case op
+    when :report_position then @responder.report_position(@x, @y)
+    when :device_report   then @responder.device_report
+    else
+      p [:respond_unknown, op]
+    end
+  end
 
 end
   
