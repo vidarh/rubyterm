@@ -1,133 +1,82 @@
-# Harness Quick Start
+# Harness Quick Start: From Glitch to Bug Report
 
-Five-minute tour of the test harness. Full reference:
-[harness.md](harness.md); dump format: [state-schema.md](state-schema.md).
+You're using the terminal, an application renders wrong. Here is how
+to capture that as a debuggable artifact and hand it off. Everything
+else the harness does is in [harness.md](harness.md).
 
-Everything prints JSON on stdout (diagnostics on stderr) and exits
-0 on pass, 1 on fail. No X server needed for anything except
-`harness/live.rb`; the only external dependency is `tmux` for
-`--oracle tmux`.
+## 1. Reproduce under the recorder
 
-## 1. Run one case
-
-```sh
-ruby harness/cli.rb run --case cases/synthetic/text-basic.bin --oracle tmux
-```
-
-Key fields in the output:
-
-```json
-{
-  "pass": false,
-  "class": "render",            // "state" = wrong grid, "render" = right grid, wrong pixels
-  "signature": "8b67c093...",   // stable id of *how* it fails (clusters duplicates)
-  "checks": {
-    "state":  {"pass": true,  "oracle": "tmux", "diff": []},
-    "redraw": {"pass": false, "cells": [[0,3],[1,3]], "bbox": [1,49,30,14]},
-    "markers": {"pass": true, "cells": []}
-  },
-  "screen": ["what the terminal", "displays as text", ...]
-}
-```
-
-Reading a failure:
-
-- `state.diff` — cells/cursor where we disagree with tmux interpreting
-  the same bytes: `{"row": 1, "col": 0, "expected": "f", "got": "t"}`.
-  A parser / state-machine bug.
-- `redraw.cells` — character cells where the incrementally maintained
-  screen differs from a from-scratch redraw of the same buffer. An
-  incremental-rendering bug (stale content the user would see).
-- `markers.cells` — like redraw, but each entry *names the cell the
-  wrong pixels came from*:
-  `{"row": 19, "col": 0, "problem": "stale_gen", "expected_gen": 160, "got": [{"row": 23, "col": 0, "gen": 153}]}`
-  means cell (19,0) shows content that was written for cell (23,0).
-
-Useful flags: `--geometry 40x10`, `--dump` (include the full state
-dump), `--checks state,redraw` (subset; `markers` re-runs the case in
-marker render mode, `state` without `--oracle tmux` only checks that
-interpreting the bytes doesn't crash).
-
-## 2. Sweep the corpus / check for regressions
+Re-run the application that glitched, wrapped in the recorder, inside
+your terminal:
 
 ```sh
-# What's broken right now?
-ruby harness/cli.rb sweep --cases cases/synthetic --oracle tmux
+ruby harness/cli.rb record --out /tmp/bug.rec -- emacs -nw
+```
 
-# The gate (use this before/after any terminal change):
+(Substitute the actual command: `claude`, `htop`, ...) The app runs
+normally — the recorder is a transparent pty proxy that logs every
+byte the app sends to the terminal. Do whatever triggered the glitch.
+When you've seen it happen, quit the app (or Ctrl-C); the recording is
+complete.
+
+Tips:
+
+* Keep the recording short if you can — straight to the glitch and
+  out. (Long recordings still work; they're just slower to chew
+  through.)
+* Same terminal, same window size as when you first saw the bug.
+  Resizes during the session are recorded and replayed faithfully.
+* The glitch doesn't need to be on screen when you quit. Transient
+  garbage that later got overwritten is still caught.
+
+## 2. Hand it off
+
+Tell Claude (or your future self):
+
+1. the path to the `.rec` file,
+2. what looked wrong ("Emacs left stale text in the minibuffer after
+   scrolling", "the status line doubled up"), and
+3. roughly when in the session it happened, if you know.
+
+That's all the harness needs. A useful first probe, which also tells
+you whether the bug is automatically detectable:
+
+```sh
+ruby harness/cli.rb replay --rec /tmp/bug.rec --checks redraw,markers
+```
+
+This replays the byte stream through a headless copy of the terminal
+and re-checks rendering at intervals. `"pass": false` with a list of
+byte offsets = the bug is captured and machine-checkable; the rest of
+the pipeline (below) is mechanical. `"pass": true` but you saw a
+glitch = still report it — the trace plus your description is what a
+debugging session starts from (the checks only cover some bug
+classes, and the state oracle, screen dumps at offsets, etc. can be
+brought to bear interactively).
+
+## 3. What happens with it (the mechanical part)
+
+For the record, what a debugging session does with your trace — all
+JSON-in/JSON-out, no babysitting required:
+
+```sh
+# locate failures              -> failing byte offsets
+ruby harness/cli.rb replay --rec /tmp/bug.rec --checks redraw,markers
+# cut the stream at a failure  -> a standalone case file
+ruby harness/cli.rb extract --rec /tmp/bug.rec --to 196608 --out bug.bin
+# shrink to a minimal repro    -> usually a few hundred bytes or less
+ruby harness/cli.rb minimize --case bug.bin --checks redraw --out minimal.bin
+# fix lib/*.rb, then prove it: repro passes, nothing else broke
+ruby harness/cli.rb run --case minimal.bin
 ruby harness/cli.rb sweep --cases cases/synthetic --oracle tmux --ratchet ratchet.json
 ```
 
-The ratchet sweep passes as long as no *previously-passing* case
-breaks — the known-failing backlog doesn't block you. Takes ~1 minute
-(tmux oracle dominates; drop `--oracle tmux` for a fast render-only
-pass).
+The minimal repro then gets committed to `cases/` and added to the
+ratchet so the bug stays fixed.
 
-## 3. Fix a bug
+## Current limitation worth knowing
 
-```sh
-ruby harness/cli.rb run --case cases/synthetic/dch.bin --oracle tmux   # fails
-# ... edit lib/term.rb ...
-ruby harness/cli.rb run --case cases/synthetic/dch.bin --oracle tmux   # passes?
-ruby harness/cli.rb sweep --cases cases/synthetic --oracle tmux --ratchet ratchet.json  # no regressions?
-ruby harness/cli.rb sweep --cases cases/synthetic --oracle tmux --ratchet ratchet.json --update-ratchet  # protect it
-rake test
-```
-
-Rules: a fix is done when the case passes *and* the ratchet sweep is
-clean. Never edit `harness/`, `cases/` or `ratchet.json` to make a fix
-pass (`--update-ratchet` is the only sanctioned ratchet change — it
-refuses to drop regressed IDs).
-
-## 4. Shrink a failing input
-
-```sh
-ruby harness/cli.rb minimize --case big-failure.bin --checks redraw --out minimal.bin
-```
-
-ddmin over escape-sequence-safe tokens; only accepts candidates that
-fail with the same `signature`. Prefer `--checks redraw` or `markers`
-over the tmux oracle here — oracle-free iterations are in-process and
-~100× faster. `minimal_inspect` in the output shows the repro
-human-readably.
-
-## 5. Capture a bug from a real application
-
-```sh
-ruby harness/cli.rb record --out emacs.rec -- emacs -nw
-# use it until it glitches, then quit
-ruby harness/cli.rb replay --rec emacs.rec --checks redraw,markers
-```
-
-Replay reports every failing byte offset. New small cases go in
-`cases/synthetic/` as raw byte files (add via `harness/gen_cases.rb`
-if synthetic, or save minimized bytes directly); the case ID is the
-filename without extension.
-
-## 6. Poke the live terminal
-
-```sh
-ruby harness/live.rb            # instead of: ruby termtest.rb
-# prints: rterm debug socket: /tmp/rterm-debug-<pid>.sock
-```
-
-```sh
-# From another shell — inject bytes and dump coherent state as JSON:
-printf '%s\n' '{"cmd":"feed","bytes_b64":"'$(printf 'hello' | base64)'"}' \
-              '{"cmd":"dump_state"}' | nc -U /tmp/rterm-debug-*.sock
-```
-
-Commands: `dump_state`, `render_barrier`, `feed`, `tokenize`
-(see harness.md for details).
-
-## Where things live
-
-| | |
-|---|---|
-| `harness/cli.rb` | all commands above |
-| `harness/lib/` | implementation (loaded headlessly; no X11) |
-| `cases/synthetic/` | committed corpus (`harness/gen_cases.rb` regenerates) |
-| `*.meta.json` sidecars | documented oracle divergences (`skip_checks`) |
-| `ratchet.json` | sorted IDs of cases known to pass |
-| `test/test_harness.rb` | unit tests for the harness itself (`rake test`) |
-| `docs/harness.md` | full guide, fixer contract, known-bug backlog |
+Replay re-checks from byte 0; very large recordings (a long Emacs
+day) replay in full rather than from checkpoints. Until save/load
+checkpointing lands (see harness.md, Future work), prefer recordings
+that go straight to the glitch.

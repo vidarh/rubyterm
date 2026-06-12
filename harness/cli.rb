@@ -13,6 +13,7 @@
 #   ruby harness/cli.rb tokenize --case FILE
 #   ruby harness/cli.rb record   --out FILE -- cmd args...
 #   ruby harness/cli.rb replay   --rec FILE [--every N] [--checks redraw,markers]
+#   ruby harness/cli.rb extract  --rec FILE --out FILE [--to BYTE_OFFSET]
 
 require 'optparse'
 require 'json'
@@ -55,6 +56,7 @@ parser = OptionParser.new do |o|
   o.on("--geometry WxH") { |v| opts[:cols], opts[:rows] = parse_geometry(v) }
   o.on("--chunk N", Integer) { |v| opts[:chunk] = v }
   o.on("--every N", Integer) { |v| opts[:every] = v }
+  o.on("--to N", Integer) { |v| opts[:to] = v }
   o.on("--dump") { opts[:dump] = true }
   o.on("--out FILE") { |v| opts[:out] = v }
   o.on("--rec FILE") { |v| opts[:rec] = v }
@@ -130,6 +132,21 @@ when "record"
   status = Harness::Recorder.record(opts[:out], extra)
   exit(status&.exitstatus || 0)
 
+when "extract"
+  abort "extract: --rec required" if !opts[:rec]
+  abort "extract: --out required" if !opts[:out]
+  bytes = +"".b
+  File.readlines(opts[:rec]).each do |line|
+    r = JSON.parse(line)
+    next if r["type"] != "output"
+    bytes << Base64.decode64(r["data_b64"])
+    break if opts[:to] && bytes.bytesize >= opts[:to]
+  end
+  bytes = bytes.byteslice(0, opts[:to]) if opts[:to]
+  File.binwrite(opts[:out], bytes)
+  emit({ "rec" => opts[:rec], "out" => opts[:out],
+         "bytes" => bytes.bytesize }, true)
+
 when "replay"
   abort "replay: --rec required" if !opts[:rec]
   result = Harness::Replay.replay(
@@ -139,7 +156,7 @@ when "replay"
   emit(result, result["pass"])
 
 else
-  warn "usage: harness/cli.rb {run|sweep|minimize|tokenize|record|replay} [options]"
+  warn "usage: harness/cli.rb {run|sweep|minimize|tokenize|record|replay|extract} [options]"
   warn "       see docs/harness.md"
   exit 2
 end
