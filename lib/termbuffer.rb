@@ -204,19 +204,18 @@ class TermBuffer
   def delete_line(y)
     @scrbuf.delete_line(y)
     if @scroll_start
-      # FIXME: Do I need to check if y<@scroll_end?
-      @scrbuf.insert_line(@scroll_start)
+      # In a scroll region, deleting a line shifts the region up and
+      # inserts a blank line at the bottom (scroll_end), not at the top.
+      @scrbuf.insert_line(@scroll_end)
     end
-    #@scrbuf.each_with_index {|l,i|
-    #  p [i,Array(l).map{|cell| Array(cell)[0].to_i.chr }.join ]
-    #}
   end
 
   def insert_line(y)
     @scrbuf.insert_line(y)
     if @scroll_end
-      # FIXME: Do I need to check if y>@scroll_start?
-      @scrbuf.delete_line(@scroll_end)
+      # Inserting pushes the region down; discard the line that falls
+      # just past the bottom of the region.
+      @scrbuf.delete_line(@scroll_end + 1)
     end
   end
 
