@@ -184,12 +184,15 @@ class Term
     num.times do
       @buffer.draw_flush
       @buffer.scroll_up
-      @adapter.scroll_up(@buffer.scroll_start.to_i, @buffer.scroll_end || height)
+      # WindowAdapter treats the second argument as the inclusive last row
+      # of the scrolling region; when unset the region ends at height-1.
+      @adapter.scroll_up(@buffer.scroll_start.to_i,
+                         @buffer.scroll_end || height - 1)
     end
   end
 
   def scroll_if_needed
-    dy = @y - (@buffer.scroll_end || height)
+    dy = @y - bottom
     if dy > 0
       scroll_up(dy)
       @y -= dy
@@ -299,7 +302,10 @@ class Term
   end
 
   def origin =  @origin_mode ? (@buffer.scroll_start || 0) : 0
-  def bottom =  @origin_mode ? (@buffer.scroll_end   || height) : height
+  # Inclusive bottom row of the active region.  CSI scroll_end is already
+  # stored as an inclusive index; when unset the active region is the
+  # whole screen, so the last valid row is height - 1.
+  def bottom =  @origin_mode ? (@buffer.scroll_end || height - 1) : height - 1
   def clampw(i) = i.clamp(0,width-1)
   def clamph(i) = i.clamp(origin,bottom)
   
@@ -484,7 +490,11 @@ class Term
     when "(0"; @g[0] = GraphicsCharset
     when ")0"; @g[1] = GraphicsCharset
     when "7";  @saved = [@x,@y,@gl,@gr,@g.dup]
-    when "8";  @x,@y,@gl,@gr,@g = *Array(@saved)
+    when "8"
+      # DECRC with no prior DECSC: default to home position and default
+      # charsets rather than leaving @x/@y nil (which crashes draw_cursor).
+      sx, sy, sgl, sgr, sg = @saved || [0, 0, 0, nil, [DefaultCharset, nil, nil, nil]]
+      @x, @y, @gl, @gr, @g = sx, sy, sgl, sgr, sg
     else
       p @esc
     end
