@@ -13,7 +13,18 @@ export const meta = {
 }
 
 // ---------------------------------------------------------------- input
-const input = typeof args === 'string' ? { rec: args } : (args || {})
+// Accept {rec, description}, the same JSON-encoded as a string, or a
+// bare path string.
+let input = args
+if (typeof input === 'string') {
+  const s = input.trim()
+  if (s.startsWith('{')) {
+    try { input = JSON.parse(s) } catch (e) { input = { rec: s } }
+  } else {
+    input = { rec: s }
+  }
+}
+input = input || {}
 if (!input.rec) throw new Error('args.rec required: path to a recording made with `ruby harness/cli.rb record`')
 const REC = input.rec
 const DESC = input.description || '(none provided)'
