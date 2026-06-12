@@ -58,6 +58,7 @@ class TrackChanges
   end
 
   def clear_line(*args)
+    draw_flush
     @buffer.clear_line(*args)
     @adapter.clear_line(*args)
   end
