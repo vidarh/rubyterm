@@ -24,5 +24,14 @@
   "synthetic/tabstops-custom",
   "synthetic/text-basic",
   "synthetic/text-crlf",
-  "synthetic/text-wrap"
+  "synthetic/text-wrap",
+  "vttest/autowrap-edge",
+  "vttest/bs-at-col1",
+  "vttest/cursor-clamp",
+  "vttest/decsc-decrc",
+  "vttest/ind-at-region-bottom",
+  "vttest/nel-scroll",
+  "vttest/ri-at-region-top",
+  "vttest/tab-clear-all",
+  "vttest/tab-set-clear"
 ]

@@ -317,8 +317,34 @@ class Term
   # stored as an inclusive index; when unset the active region is the
   # whole screen, so the last valid row is height - 1.
   def bottom =  @origin_mode ? (@buffer.scroll_end || height - 1) : height - 1
+  # The scroll region margins. Unlike #origin/#bottom these are NOT gated
+  # on origin mode: DECSTBM governs IND/RI/LF scrolling whether or not
+  # DECOM is set (origin mode only affects cursor addressing).
+  def region_top    = @buffer.scroll_start || 0
+  def region_bottom = @buffer.scroll_end   || height - 1
   def clampw(i) = i.clamp(0,width-1)
   def clamph(i) = i.clamp(origin,bottom)
+
+  # IND - index: down one line; at the bottom margin scroll the region up.
+  def index
+    if @y >= region_bottom
+      @y = region_bottom
+      scroll_up(1)
+    else
+      @y += 1
+    end
+  end
+
+  # RI - reverse index: up one line; at the top margin scroll the region
+  # down (insert a blank line at the top, discarding the region's last).
+  def reverse_index
+    if @y <= region_top
+      @y = region_top
+      insert_lines(1)
+    else
+      @y -= 1
+    end
+  end
   
   def linefeed
     @x = 0 if @lnm
@@ -494,15 +520,10 @@ class Term
     end
 
     case s
-    when "D"; @y += 1
-    when "E"; @y += 1; @x = 0
+    when "D"; index            # IND
+    when "E"; index; @x = 0     # NEL
     when "H"; @tabs = (@tabs << @x).sort.uniq
-    when "M"
-      @y -= 1
-      if @y < 0
-        @y = 0
-        insert_lines(1)
-      end
+    when "M"; reverse_index     # RI
     when "#3"; @buffer.set_lineattrs(@y, :dbl_upper) # FIXME: Flags
     when "#4"; @buffer.set_lineattrs(@y, :dbl_lower) # FIXME: Flags
     when "#5"; @buffer.set_lineattrs(@y, 0) # FIXME: Flags
@@ -535,9 +556,12 @@ class Term
       end
     when 9
       if i = @tabs.index {|t| t > @x}
-        t = @tabs[i]
         # FIXME: This is only right behaviour if wrap is off, is it not?
-        @x = clampw(t) if t > @x
+        @x = clampw(@tabs[i])
+      else
+        # No tab stop to the right (e.g. all stops cleared via TBC): HT
+        # advances to the last column, per VT100.
+        @x = width - 1
       end
     when 10, 11
       linefeed
