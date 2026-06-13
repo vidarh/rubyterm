@@ -30,6 +30,14 @@ class WindowAdapter
   # offset instead of letting the viewport drift.
   def scrollback_anchor = @window.scrollback_anchor
 
+  # DECCOLM: the terminal asked to switch to +cols+ columns (80/132). The
+  # orchestrator (RubyTerm) owns the window pixels, font scale, config and
+  # the pty size report, so delegate to it. The headless harness "term"
+  # does not implement this (the virtual grid is fixed), so it no-ops.
+  def set_columns(cols)
+    @term.set_columns(cols) if @term.respond_to?(:set_columns)
+  end
+
   def dim(col) #FIXME
     [col].pack("l").each_byte.map{|b| b.ord*0.4 }.pack("C*").unpack("l")[0]
   end

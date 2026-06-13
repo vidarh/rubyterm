@@ -45,3 +45,15 @@ fonts = [
 fontsize = 32
 
 shell="/home/vidarh/bin/rsh"
+
+# DECCOLM (the 80/132-column switch, ESC [ ? 3 h / l) is supported. Choose
+# how the column change is realised:
+#
+#   "font"   - (default) rescale the glyph cell so the new column count
+#              fits the current window; the window keeps its size and the
+#              row count is preserved. Reliable everywhere.
+#   "window" - ask the window manager to resize the window to fit the new
+#              column count at the current font. Most "native", but depends
+#              on the WM honouring the resize request.
+#
+#deccolm = "font"

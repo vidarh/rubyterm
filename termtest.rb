@@ -69,6 +69,11 @@ class RubyTerm
     @redraw_pending = false
     @pending_resize = nil
 
+    # DECCOLM (80/132 column switch) mode: :font rescales the glyph cell to
+    # fit the new column count in the current window (reliable everywhere);
+    # :window asks the WM to resize the window. Default :font.
+    @deccolm_mode = (@config[:deccolm] || "font").to_s.to_sym
+
     @window = Window.new(fonts: @config[:fonts], fontsize: @config[:fontsize])
     @adapter = WindowAdapter.new(@window, self)
 
@@ -159,6 +164,28 @@ class RubyTerm
     if should_redraw
       redraw
     end
+  end
+
+  # DECCOLM: realise an 80/132 column switch (called via the adapter from
+  # Term#set_width_and_clear). font mode rescales the glyph cell so `cols`
+  # columns fit the current window, keeping the row count; window mode asks
+  # the WM to resize. Either way the pty is told the new size.
+  def set_columns(cols)
+    cols = cols.to_i
+    return if cols <= 0 || @pixelw.to_i <= 0
+
+    if @deccolm_mode == :window
+      # WM-driven: the resulting ConfigureNotify completes the change via resize().
+      @window.request_pixel_size(cols * char_w, @pixelh.to_i)
+      return
+    end
+
+    rows = @term.height
+    @window.fit_columns(cols, @pixelw.to_i)
+    @buffer.on_resize(cols, rows)
+    @term.resize(cols, rows)
+    @controller.report_size(cols, rows)
+    redraw
   end
 
 

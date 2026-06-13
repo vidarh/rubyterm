@@ -314,10 +314,11 @@ class Term
   end
 
   def set_width_and_clear(w)
-    # FIXME: Need to *either* resize window or rescale font
-    # to work properly.
-    # FIXME: Verify if clear_screen is appropriate.
+    # DECCOLM. Set the logical width, then let the display layer actually
+    # realise the column change - by rescaling the font or resizing the
+    # window (RubyTerm#set_columns); a no-op in the headless harness.
     resize(w, height)
+    @adapter.set_columns(w)
     clear_screen
   end
 

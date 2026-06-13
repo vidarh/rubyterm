@@ -139,6 +139,10 @@ class Window
     #@buf = @wid
     
     @scale = opts[:fontsize] || 16
+    # Horizontal font scale, decoupled from @scale so DECCOLM (80/132) can
+    # narrow/widen the glyph cell while keeping the row height (and thus the
+    # row count) constant. Defaults to @scale (square cell).
+    @col_scale = @scale
     @fontset = opts[:fonts]
     setup_fonts
 
@@ -200,20 +204,47 @@ class Window
   end
 
   def setup_fonts
+    xs = @col_scale || @scale
     # fit: scale oversized glyphs (e.g. wide spinner/symbol chars) down into
     # the fixed cell instead of letting them overflow/clamp at the edge.
-    @skr = Skrift::X11::Glyphs.new(@dpy, fontset: @fontset, x_scale: @scale, y_scale: @scale, fixed: true, fit: true)
+    @skr = Skrift::X11::Glyphs.new(@dpy, fontset: @fontset, x_scale: xs, y_scale: @scale, fixed: true, fit: true)
     # FIXME: Maybe instantiate these as needed.
-    @skr_dblheight = Skrift::X11::Glyphs.new(@dpy, fontset: @fontset, x_scale: @scale*2, y_scale: @scale*2, fixed: true)
-    @skr_dblwidth  = Skrift::X11::Glyphs.new(@dpy, fontset: @fontset, x_scale: @scale*2, y_scale: @scale, fixed: true)
+    @skr_dblheight = Skrift::X11::Glyphs.new(@dpy, fontset: @fontset, x_scale: xs*2, y_scale: @scale*2, fixed: true)
+    @skr_dblwidth  = Skrift::X11::Glyphs.new(@dpy, fontset: @fontset, x_scale: xs*2, y_scale: @scale, fixed: true)
   end
 
   def adjust_fontsize(adj)
     @scale += adj
     @scale = @scale.clamp(5, 100)
+    @col_scale = @scale          # back to a square cell on manual zoom
     @char_w = nil
     @char_h = nil
     setup_fonts
+  end
+
+  # DECCOLM font mode: narrow/widen the glyph cell so +cols+ columns fill
+  # +pixel_width+, keeping the row height (and row count) constant. Iterates
+  # because fixed_width is a ceil() of a scaled advance.
+  def fit_columns(cols, pixel_width)
+    return if cols <= 0 || pixel_width <= 0
+    target = pixel_width.to_f / cols
+    6.times do
+      cw = char_w
+      break if cw <= 0
+      ratio = target / cw
+      break if (ratio - 1.0).abs < 0.02
+      @col_scale = (@col_scale * ratio).clamp(3.0, 200.0)
+      @char_w = @char_h = nil
+      setup_fonts
+    end
+  end
+
+  # DECCOLM window mode: ask X to resize the window to the given pixel size
+  # (the WM may or may not honour it; the resulting ConfigureNotify drives
+  # the normal resize path).
+  def request_pixel_size(w, h)
+    @dpy.configure_window(@wid, width: w, height: h)
+    @dpy.flush if @dpy.respond_to?(:flush)
   end
   
   def char_w
