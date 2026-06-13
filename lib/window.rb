@@ -200,7 +200,9 @@ class Window
   end
 
   def setup_fonts
-    @skr = Skrift::X11::Glyphs.new(@dpy, fontset: @fontset, x_scale: @scale, y_scale: @scale, fixed: true)
+    # fit: scale oversized glyphs (e.g. wide spinner/symbol chars) down into
+    # the fixed cell instead of letting them overflow/clamp at the edge.
+    @skr = Skrift::X11::Glyphs.new(@dpy, fontset: @fontset, x_scale: @scale, y_scale: @scale, fixed: true, fit: true)
     # FIXME: Maybe instantiate these as needed.
     @skr_dblheight = Skrift::X11::Glyphs.new(@dpy, fontset: @fontset, x_scale: @scale*2, y_scale: @scale*2, fixed: true)
     @skr_dblwidth  = Skrift::X11::Glyphs.new(@dpy, fontset: @fontset, x_scale: @scale*2, y_scale: @scale, fixed: true)
