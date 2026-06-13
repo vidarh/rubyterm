@@ -166,7 +166,20 @@ class RubyTerm
 
   def process_queue = process_chunk(@queue.shift)
 
+  # Everything that touches the buffer/window runs here, on the single
+  # input-processing thread. The blink and flush timers enqueue :blink
+  # and :flush rather than touching the buffer from their own threads:
+  # the buffer/renderer is not thread-safe, and concurrent mutation
+  # (e.g. blink's redraw racing a feed mid-scroll) corrupts cells
+  # non-deterministically. Serializing through the queue is the
+  # synchronization.
   def process_chunk(str)
+    case str
+    when :blink then return blink
+    when :flush then return @window.flush
+    when Array  then return resize(str[1], str[2]) if str[0] == :resize
+    end
+
     # FIXME: Could be smarter about this; it's only needed if the
     # first character being written won't clear the same square.
     @term.clear_cursor
@@ -177,11 +190,6 @@ class RubyTerm
     # a certain amount of time has elapsed.
     @term.draw_cursor
     @buffer.draw_flush # Ensure everything has been rendered
-    # FIXME: This is likely too extreme:
-#    if @queue.empty?
-#      STDERR.puts :flush
-      #@window.flush
-#    end
   end
 
   def adjust_fontsize(delta)
@@ -376,8 +384,10 @@ class RubyTerm
          X11::Form::NoExposure
       # Intentionally ignored
     when X11::Form::Expose, X11::Form::ConfigureNotify
-      resize(pkt.width,pkt.height)
-      #@window.dirty!#@window.flush
+      # resize/redraw mutates the buffer; run it on the processing
+      # thread (via the queue) rather than here on the event thread, or
+      # it races a concurrent feed and corrupts cells.
+      @queue << [:resize, pkt.width, pkt.height]
     else
       p pkt
     end
@@ -418,18 +428,20 @@ class RubyTerm
     
     threads << Thread.new do
       loop do
-        timeout = @buffer.blinky.empty? ? 1 : 0.2
-        sleep(timeout)
-        # FIXME: This draws changes, and so touches
-        # the buffer.
-        blink
+        sleep(0.1)
+        # Enqueue rather than calling blink directly: blink redraws and
+        # so touches the buffer, which must only be mutated on the
+        # processing thread. blink self-gates on elapsed time, so a
+        # fixed tick is fine.
+        @queue << :blink
       end
     end
 
-    # FIXME: This is ... extreme
+    # Flush on the processing thread too, so the @buf->window copy never
+    # races a concurrent buffer mutation.
     threads << Thread.new do
       loop do
-        @window.flush
+        @queue << :flush
         sleep(1/30.0)
       end
     end
