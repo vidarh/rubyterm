@@ -43,8 +43,14 @@ class WindowAdapter
   def clear_cells(x,y,w,h) = clear_area(x,y, w * char_w, h * char_h)
 
   def clear_line y, from_x, to_x = nil
-    to_x ||= @term.term_width
-    clear_cells(from_x, y, to_x-from_x, 1)
+    if to_x
+      # to_x is an INCLUSIVE end column, matching TermBuffer#clear_line
+      # (EL mode 1 clears [0..cursor] inclusive). Clearing to_x-from_x
+      # cells left the cursor column itself stale on screen.
+      clear_cells(from_x, y, to_x - from_x + 1, 1)
+    else
+      clear_cells(from_x, y, @term.term_width - from_x, 1)
+    end
   end
 
   def insert_lines(y, num, maxy)

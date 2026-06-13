@@ -10,6 +10,10 @@ class TrackChanges
   attr_reader :buffer
 
   def clear
+    # Flush any batched text first: otherwise pending draws are emitted to
+    # the screen AFTER the clear and survive it (stale content; the buffer
+    # is already correct, so only the incremental render diverges).
+    draw_flush
     clear_changes
     @cleared = true
 
