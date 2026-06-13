@@ -47,7 +47,9 @@ class TrackChanges
 
   def delete_lines(y, num, maxy)
     draw_flush
-    num.times.each {|i| @buffer.delete_line(y+i) }
+    # Delete repeatedly at the SAME row: each delete shifts the rows below
+    # up into y, so deleting at y+i would skip every other line.
+    num.times { @buffer.delete_line(y) }
     @adapter.delete_lines(y, num, @buffer.scroll_end||maxy) unless @adapter.scrollback_mode
   end
 

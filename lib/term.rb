@@ -158,6 +158,12 @@ class Term
   # FIXME (still broken) Emacs uses this to scroll up
   def delete_lines(num) = @buffer.delete_lines(@y, num, height)
 
+  # DCH - delete characters at the cursor, shifting the line left.
+  def delete_chars(num)
+    @buffer.delete_chars(@x, @y, num || 1)
+    redraw_line_from_cursor
+  end
+
   # ESC [ Pn A / B
   # FIXME: Should these not use clamph?
   def cursor_up(lines)   = (@y = clamph(@y - lines.to_i.clamp(1,height)))
@@ -426,9 +432,7 @@ class Term
     #when "K" then erase_in_line(args[0])
     when "L" then insert_lines(args[0])
     when "M" then delete_lines(args[0]||1)
-    when "P"
-      p @esc
-      # delete_chars(args[0]||1)
+    when "P" then delete_chars(args[0]||1)
     when "S" then scroll_up(args[0]||1)
     when "T"; # Scroll down
     when "c"

@@ -55,8 +55,11 @@ class WindowAdapter
   end
 
   def delete_lines(y, num, maxy)
-    @window.scroll_up(char_h*(y+num+1), @term.term_width * char_w,
-      (maxy-num-y)*char_h, char_h*(num-1))
+    # Move the rows below the deleted block - [y+num .. maxy] - up by num
+    # rows, into [y .. maxy-num]; Window#scroll_up clears the vacated rows
+    # at the bottom of the region.
+    @window.scroll_up((y + num) * char_h, @term.term_width * char_w,
+      (maxy - (y + num) + 1) * char_h, num * char_h)
   end
 
 

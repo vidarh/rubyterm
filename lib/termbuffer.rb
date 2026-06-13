@@ -257,6 +257,14 @@ class TermBuffer
     end
   end
 
+  # DCH: delete num cells at (x,y), shifting the remainder of the line
+  # left. Vacated cells at the right become blank (a shorter line renders
+  # as trailing spaces).
+  def delete_chars(x, y, num)
+    l = @scrbuf[y]
+    num.times { l.delete_at(x) if x < l.length }
+  end
+
   def blinky  = @blinky
 
   def set(x,y,ch, fg=0, bg=0, flags=0)
