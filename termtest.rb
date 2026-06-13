@@ -415,7 +415,12 @@ class RubyTerm
     p [pkt.class, pkt.is_a?(X11::Form::ButtonRelease)]
     x = pkt.event_x / char_w
     y = pkt.event_y / char_h
-    case @term.mouse_mode
+    # Holding Shift forces a local text selection even when the
+    # application has grabbed the mouse (mouse reporting on - e.g. Claude's
+    # agent picker, or any full-screen app with clickable UI). This is the
+    # standard xterm override so you can always select/copy.
+    shift = pkt.state.anybits?(0x01) # ShiftMask
+    case shift ? nil : @term.mouse_mode
     when nil
       # Selection works in buffer coordinates: when scrolled back, the
       # row under the pointer is a scrollback line (buffer row
