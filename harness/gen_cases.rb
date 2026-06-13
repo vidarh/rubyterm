@@ -55,6 +55,10 @@ CASES = {
   "autowrap-off"    => "\e[?7l" + ("x" * 100) + "END\e[?7h",
   "charset-dec"     => "\e(0lqqqk\e(B plain \x0elqk\x0f done",
   "tabstops-custom" => "\e[3g\e[1;9H\eH\e[1;17H\eH\r\na\tb\tc",
+  # OSC set-title containing a multibyte glyph (✳, as in claude's spinner
+  # title). The title must not corrupt the grid, and must not crash the
+  # parser (bare Integer#chr raised RangeError on codepoints > 255).
+  "osc-title-utf8"  => "\e]0;✳ Claude\aHi",
 
   # Reports: the terminal's query replies are captured and the
   # `responses` check feeds them to the tmux oracle as host input, so a

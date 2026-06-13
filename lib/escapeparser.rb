@@ -10,11 +10,16 @@ class EscapeParser
   end
 
   def put(ch)
+    # ch is a codepoint, which for OSC/DCS string payloads (e.g. a window
+    # title) can be a multibyte UTF-8 character - decode it as UTF-8.
+    # Bare Integer#chr only handles 0..255 and raises RangeError on
+    # anything larger (e.g. a spinner glyph in claude's title sequence).
+    c = ch.chr(Encoding::UTF_8)
     case @state
     when :start
       return false if ch < 32
-      @str << ch.chr
-      case ch.chr
+      @str << c
+      case c
       when '['
         @state = :csi
       when ']'
@@ -26,12 +31,12 @@ class EscapeParser
         @state = :complete
       end
     when :csi
-      @str << ch.chr
-      @state = :complete if /[[:alpha:]]|[[:cntrl:]]|[@]/.match(ch.chr)
+      @str << c
+      @state = :complete if /[[:alpha:]]|[[:cntrl:]]|[@]/.match(c)
     when :oc
       if ch == 7 then @state = :complete
       elsif ch < 32 then return false
-      else @str << ch.chr
+      else @str << c
       end
     when :string
       if ch == 7
@@ -41,13 +46,13 @@ class EscapeParser
       elsif ch < 32
         return false
       else
-        @str << ch.chr
+        @str << c
       end
     when :string_esc
-      if ch.chr == '\\'
+      if c == '\\'
         @state = :complete
       else
-        @str << 27.chr << ch.chr
+        @str << 27.chr << c
         @state = :string
       end
     else

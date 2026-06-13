@@ -96,4 +96,16 @@ class TestEscapeParser < Minitest::Test
     assert @parser.complete?
     assert_equal "P!|00000000", @parser.str
   end
+
+  def test_osc_title_with_multibyte_codepoint
+    skip "EscapeParser not available" unless @parser
+
+    # OSC set-title carrying a multibyte glyph (U+2733 ✳, as in claude's
+    # spinner title). The decoder delivers it as one codepoint, not raw
+    # bytes; bare Integer#chr raises RangeError on codepoints > 255.
+    [0x1b, ?].ord, ?0.ord, ?;.ord, 0x2733, ?X.ord, 7].each { |cp| @parser.put(cp) }
+
+    assert @parser.complete?
+    assert_equal "]0;✳X", @parser.str
+  end
 end
