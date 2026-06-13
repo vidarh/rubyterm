@@ -61,7 +61,14 @@ class RubyTerm
     pp(:config,@config)
 
     @queue = Queue.new
-    
+    # Coalesce redraw-causing events (resize/expose): a drag fires a
+    # flood of ConfigureNotify + Expose, and repainting on each one makes
+    # the display lag while it drains the backlog. Keep at most one
+    # redraw request queued, always for the latest pending size.
+    @redraw_mutex = Mutex.new
+    @redraw_pending = false
+    @pending_resize = nil
+
     @window = Window.new(fonts: @config[:fonts], fontsize: @config[:fontsize])
     @adapter = WindowAdapter.new(@window, self)
 
@@ -175,10 +182,9 @@ class RubyTerm
   # synchronization.
   def process_chunk(str)
     case str
-    when :blink   then return blink
-    when :flush   then return @window.flush
-    when :repaint then return redraw
-    when Array    then return resize(str[1], str[2]) if str[0] == :resize
+    when :blink      then return blink
+    when :flush      then return @window.flush
+    when :do_redraw  then return coalesced_redraw
     end
 
     # FIXME: Could be smarter about this; it's only needed if the
@@ -191,6 +197,36 @@ class RubyTerm
     # a certain amount of time has elapsed.
     @term.draw_cursor
     @buffer.draw_flush # Ensure everything has been rendered
+  end
+
+  # Request a redraw (from the event thread). Records the latest pending
+  # size and enqueues a single :do_redraw marker; while one is already
+  # queued, further requests just update the target. This collapses a
+  # drag's flood of ConfigureNotify+Expose into one repaint per
+  # processing slot at the most recent size, instead of one per event.
+  def request_redraw(size = nil)
+    enqueue = false
+    @redraw_mutex.synchronize do
+      @pending_resize = size if size
+      enqueue = true unless @redraw_pending
+      @redraw_pending = true
+    end
+    @queue << :do_redraw if enqueue
+  end
+
+  # Process a coalesced redraw on the processing thread: resize to the
+  # latest pending size if it changed, otherwise just repaint.
+  def coalesced_redraw
+    size = @redraw_mutex.synchronize do
+      @redraw_pending = false
+      @pending_resize
+    end
+    if size && size != @last_resize
+      @last_resize = size
+      resize(size[0], size[1]) # resize repaints as needed
+    else
+      redraw
+    end
   end
 
   def adjust_fontsize(delta)
@@ -386,14 +422,12 @@ class RubyTerm
       # Intentionally ignored
     when X11::Form::ConfigureNotify
       # Real size change: pkt.width/height are the new window size.
-      # Routed through the queue so resize (which mutates the buffer)
-      # runs on the processing thread, not racing a concurrent feed.
-      @queue << [:resize, pkt.width, pkt.height]
+      request_redraw([pkt.width, pkt.height])
     when X11::Form::Expose
       # Damage, NOT a size change: pkt.width/height are the exposed
-      # rectangle, not the window. Repaint the current buffer; never
-      # resize here (doing so shrinks the terminal to the strip size).
-      @queue << :repaint
+      # rectangle, not the window. Repaint only; never resize here (that
+      # would shrink the terminal to the strip size).
+      request_redraw
     else
       p pkt
     end

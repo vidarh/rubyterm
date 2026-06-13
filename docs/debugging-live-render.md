@@ -142,6 +142,19 @@ General rule: in X, **ConfigureNotify = size changed** (resize),
 sure the window actually selects `StructureNotifyMask` or its own
 ConfigureNotify never arrives.
 
+- **Resize is slow / "hangs until it catches up".** A drag fires a
+  *flood* of ConfigureNotify + Expose; repainting on each one builds a
+  backlog the renderer then grinds through. A single redraw is cheap
+  (a few ms) -- the cost is volume. Fix: **coalesce**. Keep at most one
+  redraw request queued (a `@redraw_pending` flag guarded by a mutex)
+  and always repaint to the *latest* pending size; further events while
+  one is in flight just update the target. The event thread stays
+  responsive (requesting a redraw is cheap) and the renderer does one
+  repaint per slot at the current size instead of one per event, so it
+  catches up within a single redraw of the drag stopping. Coalescing
+  must be mutex-serialised with the apply step or the final size can be
+  lost to a race.
+
 ## Triage checklist: "app looks corrupted in rterm"
 
 1. Reproduce live; screenshot **and** `dump_state`. Clean buffer + dirty
