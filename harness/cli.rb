@@ -4,7 +4,7 @@
 # JSON on stdout, diagnostics on stderr, exit 0/1 = pass/fail.
 # See docs/harness.md for the full guide.
 #
-#   ruby harness/cli.rb run      --case FILE [--checks state,redraw,markers,trace]
+#   ruby harness/cli.rb run      --case FILE [--checks state,redraw,markers,responses,trace]
 #                                [--oracle tmux|none] [--geometry 80x24]
 #                                [--chunk N] [--dump]
 #   ruby harness/cli.rb sweep    --cases DIR[,DIR...] [--checks ...] [--oracle ...]
@@ -41,7 +41,7 @@ def parse_geometry(s)
 end
 
 opts = {
-  checks: %w[state redraw markers],
+  checks: %w[state redraw markers responses],
   oracle: "none",
   cols: 80, rows: 24,
   chunk: Harness::Session::DEFAULT_CHUNK,

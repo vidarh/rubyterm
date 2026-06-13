@@ -6,7 +6,16 @@
 #
 # The session plays the roles RubyTerm plays in the live terminal:
 # it is the WindowAdapter's "term" (blink state, dimensions) and the
-# Term's responder (capturing DSR/DA replies in #responses).
+# Term's responder, capturing the query replies (DSR/DA/...) the live
+# terminal would write back to the pty into #responses.
+#
+# Those replies are not rendered here (in the live terminal they go to
+# the host/application, not the screen), but capturing them is what lets
+# the `responses` check feed them to the tmux oracle as host input and
+# see whether the host consumes them or leaks them to the pane as
+# visible garbage ("escape sequences on screen") - a host-side property
+# a grid-only oracle cannot see. The reply bytes MUST stay byte-identical
+# to Controller's (lib/controller.rb) or the check is testing a fiction.
 module Harness
   class Session
     CHAR_W = 8
@@ -30,7 +39,7 @@ module Harness
       @term.resize(cols, rows)
       @buffer.on_resize(cols, rows)
       @term.responder = self
-      @responses = +""
+      @responses = +"".b
     end
 
     # # WindowAdapter's "term" interface
@@ -39,10 +48,14 @@ module Harness
     def term_width   = @term.width
     def term_height  = @term.height
 
-    # # Term's responder interface (captures replies the live terminal
-    # # would write to the pty)
+    # # Term's responder interface. These mirror Controller's replies
+    # # (lib/controller.rb): the live terminal writes them to the pty;
+    # # here we capture them so the `responses` check can interpret them
+    # # the way an echoing application would.
     def report_position(x, y) = @responses << "\e[#{y + 1};#{x + 1}R"
-    def device_report         = @responses << "\eP!|00000000\e\\"
+    def device_attr_primary   = @responses << "\e[?1;2c"
+    def device_attr_secondary = @responses << "\e[>0;10;1c"
+    def device_attr_tertiary  = @responses << "\x1bP!|00000000\x1b\\"
 
     # Feed bytes through the same per-chunk cycle the live terminal's
     # process_queue uses (clear cursor, interpret, draw cursor, flush).

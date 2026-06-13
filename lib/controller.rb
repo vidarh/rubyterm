@@ -40,12 +40,17 @@ class Controller
     retry
   end
 
-  def device_report
-    # Minimum needed to prevent apps expecting a response from hanging.
-    # Terminate the DCS with ST so the echoed response is consumed rather
-    # than leaking as visible text.
-    @wr.write("\x1bP!|00000000\x1b\\")
-  end
+  # Device Attributes replies. Each query has a distinct reply *type*;
+  # sending the wrong type (e.g. the DA3 DCS below in answer to a DA1/DA2
+  # query) makes hosts like tmux fail to consume it, so it leaks into the
+  # pane as visible text.
+  #
+  # DA1 (CSI c): identify as a VT100 with Advanced Video Option.
+  def device_attr_primary   = @wr.write("\e[?1;2c")
+  # DA2 (CSI > c): terminal id 0 (VT100), firmware version, cartridge 0.
+  def device_attr_secondary = @wr.write("\e[>0;10;1c")
+  # DA3 (CSI = c): DECRPTUI unit id, a DCS string (! | DDDDDDDD ST).
+  def device_attr_tertiary  = @wr.write("\x1bP!|00000000\x1b\\")
 
   def report_size(w, h) = (@master.winsize = [h + 1, w])
   def report_position(x, y) = @wr.write("\e[#{y + 1};#{x + 1}R")

@@ -18,11 +18,18 @@ require 'digest'
 #             content / misaligned blit bugs, self-describing).
 # * trace   - records all render-sink calls and reports op statistics
 #             (informational; over-draw is a perf smell, not a failure).
+# * responses - the query replies (DSR/DA/...) the terminal wrote back,
+#             fed to the tmux oracle as host input. A correct reply is
+#             consumed by the host; a malformed/wrong-type one is
+#             forwarded to the pane and echoed as visible garbage
+#             ("escape sequences on screen"). This is a host-side
+#             property the grid oracle is structurally blind to. Needs
+#             the tmux oracle; otherwise skipped.
 #
 # The "class" field ("state" | "render") drives failure clustering.
 module Harness
   module Checks
-    ALL = %w[state redraw markers trace].freeze
+    ALL = %w[state redraw markers responses trace].freeze
 
     def self.run_case(bytes, cols: 80, rows: 24, checks: ALL,
                       oracle: nil, chunk: Session::DEFAULT_CHUNK,
@@ -45,6 +52,11 @@ module Harness
           marker_check(Session.new(cols: cols, rows: rows,
                                    render_mode: :markers)
                          .feed(bytes, chunk: chunk))
+      end
+      if checks.include?("responses")
+        result["checks"]["responses"] =
+          responses_check(session.responses, cols: cols, rows: rows,
+                          oracle: oracle)
       end
       if checks.include?("trace")
         result["checks"]["trace"] = trace_check(session)
@@ -125,6 +137,47 @@ module Harness
       { "pass" => bad.empty?, "cells" => bad }
     end
 
+    # Faithfulness of the terminal's own query replies. A reply travels
+    # terminal -> host (the pty); whether it ever reaches the screen
+    # depends on the host. A host like tmux *consumes* a reply it
+    # recognises as the answer to a query it sent, but forwards a
+    # malformed or wrong-type reply to the foreground program, where a
+    # cooked-mode reader (a shell at its prompt) echoes it as visible
+    # garbage - the "escape sequences on screen" bug.
+    #
+    # This is irreducibly a host-side property: re-interpreting the reply
+    # in our own terminal cannot see it (we simply consume our own DCS),
+    # which is why the bug slipped a grid-only oracle. So the check
+    # delegates to the tmux oracle's leak test. With no tmux oracle it
+    # cannot be evaluated and is reported as skipped (passing), rather
+    # than run a heuristic that gives false confidence.
+    #
+    # This is how the DA2-reply leak surfaced: a DA3 DCS (`\eP!|...\e\\`)
+    # sent in answer to DA1/DA2 is not recognised by tmux and printed
+    # `^[P!|00000000^[\` on screen.
+    def self.responses_check(replies, cols:, rows:, oracle: nil)
+      replies = (replies || "").b
+      if replies.empty?
+        return { "pass" => true, "oracle" => oracle.to_s, "replies" => "",
+                 "leaked" => [] }
+      end
+      if oracle != "tmux"
+        return { "pass" => true, "oracle" => "none", "skipped" => true,
+                 "replies" => replies, "leaked" => [] }
+      end
+      # The leak test judges a reply by whether the host consumes it - but
+      # a host only consumes replies to queries *it* issued (terminal
+      # probing: DA1/DA2/DA3, XTVERSION). CPR (cursor position, CSI r;c R)
+      # answers an *application* query the host never sends, so it would
+      # always look "leaked" regardless of correctness; it is not a
+      # host-probe reply and is excluded from this test.
+      probed = replies.gsub(/\e\[\d+;\d+R/, "".b)
+      leaked = probed.empty? ? [] :
+                 OracleTmux.leaked(probed, cols: cols, rows: rows)
+      { "pass" => leaked.empty?, "oracle" => "tmux",
+        "replies" => replies, "leaked" => leaked }
+    end
+
     def self.trace_check(session)
       counts = Hash.new(0)
       session.window.trace.each { |t| counts[t[:op].to_s] += 1 }
@@ -134,7 +187,10 @@ module Harness
     def self.classify(checks)
       return "state" if checks["state"] && !checks["state"]["pass"]
       if (checks["redraw"] && !checks["redraw"]["pass"]) ||
-         (checks["markers"] && !checks["markers"]["pass"])
+         (checks["markers"] && !checks["markers"]["pass"]) ||
+         (checks["responses"] && !checks["responses"]["pass"])
+        # A leaked reply is screen corruption, same visible class as a
+        # render bug (the grid the case itself produced is unaffected).
         return "render"
       end
       nil
@@ -162,6 +218,9 @@ module Harness
             normalize_cells(c["cells"])
           when "markers"
             normalize_markers(c["cells"])
+          when "responses"
+            # The leaked text itself identifies the failing reply.
+            c["leaked"].sort
           end
         sig << [name, coords&.sort_by(&:to_s)]
       end

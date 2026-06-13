@@ -56,8 +56,13 @@ CASES = {
   "charset-dec"     => "\e(0lqqqk\e(B plain \x0elqk\x0f done",
   "tabstops-custom" => "\e[3g\e[1;9H\eH\e[1;17H\eH\r\na\tb\tc",
 
-  # Reports (responses are captured, not compared, but must not crash)
+  # Reports: the terminal's query replies are captured and the
+  # `responses` check feeds them to the tmux oracle as host input, so a
+  # reply the host cannot consume (wrong type for the query) and leaks to
+  # the pane fails. DA2 (`\e[>c`) is the sequence whose reply leaked
+  # `^[P!|00000000^[\` on screen.
   "dsr-da"          => "ask\e[6n\e[c done",
+  "da2-reply"       => "\e[>c",
 }
 
 CASES.each do |name, bytes|

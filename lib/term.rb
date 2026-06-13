@@ -33,9 +33,10 @@ class Term
     :mouse_mode, :mouse_reporting, :tabs, :esc, :mode, :mouse_buttons
 
   # Object receiving terminal query replies (DSR/DA). Must respond to
-  # #report_position(x,y) and #device_report. In the live terminal this
-  # is the Controller (which writes to the pty); in the test harness it
-  # is a recorder capturing responses.
+  # #report_position(x,y) and the three Device Attributes replies
+  # #device_attr_primary / #device_attr_secondary / #device_attr_tertiary.
+  # In the live terminal this is the Controller (which writes to the
+  # pty); in the test harness it is a Session capturing responses.
   attr_accessor :responder
 
   def initialize(buffer, adapter)
@@ -392,7 +393,19 @@ class Term
     when "S" then scroll_up(args[0]||1)
     when "T"; # Scroll down
     when "c"
-      yield(:device_report) if block_given?
+      # Device Attributes. The reply type depends on the private prefix;
+      # answering DA1/DA2 with the wrong kind (e.g. a DA3 DCS) means a
+      # host like tmux fails to recognise it and leaks it to the pane.
+      #   CSI c   / CSI 0 c  -> primary   (DA1), reply CSI ? ... c
+      #   CSI > c / CSI > 0 c-> secondary (DA2), reply CSI > ... c
+      #   CSI = c            -> tertiary  (DA3), reply DCS ! | ... ST
+      if block_given?
+        case s[1]
+        when ">" then yield(:device_attr_secondary)
+        when "=" then yield(:device_attr_tertiary)
+        else          yield(:device_attr_primary)
+        end
+      end
     when "d"
       @y = clamph(origin+(args[0]||1) - 1) # FIXME: Should these be clamped
     when "g"
@@ -535,8 +548,10 @@ class Term
   def respond(op)
     return if !@responder
     case op
-    when :report_position then @responder.report_position(@x, @y)
-    when :device_report   then @responder.device_report
+    when :report_position        then @responder.report_position(@x, @y)
+    when :device_attr_primary    then @responder.device_attr_primary
+    when :device_attr_secondary  then @responder.device_attr_secondary
+    when :device_attr_tertiary   then @responder.device_attr_tertiary
     else
       p [:respond_unknown, op]
     end

@@ -1,5 +1,7 @@
 require 'tmpdir'
 require 'shellwords'
+require 'pty'
+require 'io/console'
 
 # Semantic oracle: replays a byte stream through tmux's terminal state
 # machine (a widely deployed reference implementation) and captures the
@@ -18,6 +20,21 @@ module Harness
 
     def self.run(bytes, cols:, rows:, timeout: 10)
       new(cols: cols, rows: rows, timeout: timeout).run(bytes)
+    end
+
+    # Host-side faithfulness for query replies. Feeds `replies` to a tmux
+    # pane *as keyboard input* (a master write is what the host treats a
+    # terminal's reply as) while a cooked-mode reader (`cat`) is
+    # foreground, then returns the visible text tmux leaked into the
+    # pane. A reply tmux recognises as the answer to a query it sent is
+    # consumed (no leak); a malformed or wrong-type reply - e.g. a DA3
+    # DCS sent in answer to DA1/DA2 - is forwarded to the pane and echoed
+    # as visible caret-notation garbage. This is exactly the path that
+    # put `^[P!|00000000^[\` on screen, and it cannot be modelled by
+    # re-interpreting the reply in our own terminal (which simply
+    # consumes the DCS).
+    def self.leaked(replies, cols:, rows:, timeout: 6)
+      new(cols: cols, rows: rows, timeout: timeout).leaked(replies)
     end
 
     def initialize(cols:, rows:, timeout: 10)
@@ -67,7 +84,64 @@ module Harness
       end
     end
 
+    # See the class-method doc above. Drives a real pty so the reply
+    # travels the genuine terminal->host input path (a master write is
+    # how the host sees a terminal's reply), exercising tmux's
+    # query-reply recognition - which `send-keys` would bypass, making
+    # every reply look leaked.
+    def leaked(replies)
+      raise Unavailable, "tmux not found" if !self.class.available?
+      replies = (replies || "").b
+      return [] if replies.empty?
+      visible = []
+      PTY.spawn("tmux", "-L", @sock, "-f", "/dev/null", "new-session",
+                "-x", @cols.to_s, "-y", @rows.to_s, "cat") do |r, w, pid|
+        w.winsize = [@rows, @cols] rescue nil
+        deadline = Time.now + @timeout
+        sent = false
+        quiet_since = nil # last time we saw fresh tmux output
+        loop do
+          break if Time.now > deadline
+          rs, = IO.select([r], nil, nil, 0.1)
+          if rs
+            begin
+              r.read_nonblock(4096)
+              quiet_since = Time.now
+            rescue IO::WaitReadable
+            rescue EOFError, Errno::EIO
+              break
+            end
+          elsif quiet_since
+            idle = Time.now - quiet_since
+            if !sent && idle > 0.2
+              # tmux has emitted its startup queries (incl. DA) and gone
+              # quiet: it is now in the window where it awaits a reply.
+              w.write(replies)
+              sent = true
+              quiet_since = Time.now
+            elsif sent && idle > 0.3
+              break # reply consumed/forwarded and pane settled
+            end
+          end
+        end
+        visible = leaked_lines
+        Process.kill("KILL", pid) rescue nil
+      end
+      visible
+    ensure
+      tmux("kill-server")
+    end
+
     private
+
+    # Visible pane text minus tmux's own status line and blank rows: any
+    # remaining content is a reply tmux failed to consume and echoed.
+    def leaked_lines
+      text = tmux_out("capture-pane", "-p", "-t", "0").to_s
+      text.lines.map(&:chomp).reject do |l|
+        l.strip.empty? || l =~ /\A\[\d+\]\s+\d+:(cat|bash)/
+      end
+    end
 
     def tmux(*args)
       system("tmux", "-L", @sock, "-f", "/dev/null", *args,

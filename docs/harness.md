@@ -46,7 +46,7 @@ harness/
     statedump.rb    state -> canonical JSON schema (docs/state-schema.md)
     differ.rb       structured dump diffing + explicit normalizations
     oracle_tmux.rb  tmux-based semantic oracle
-    checks.rb       state/redraw/markers/trace checks + failure signatures
+    checks.rb       state/redraw/markers/responses/trace checks + failure signatures
     tokenizer.rb    escape-safe byte-stream tokenization
     ddmin.rb        delta debugging
     minimizer.rb    signature-matched ddmin over tokens
@@ -99,6 +99,29 @@ into `TermBuffer` by `patches.rb`). Decoding the framebuffer then
 generation 5 from cell (3,39)" is a diff a fixer can act on directly.
 Scroll blits legitimately move markers around; only the generation has
 to match.
+
+### `responses` — query replies, checked host-side against tmux
+
+The terminal answers queries (DSR, DA, ...) by writing a reply *back to
+the host* (the pty), not to the screen — so a grid-only oracle never
+sees it. That blind spot hides a real bug class: a host like tmux
+**consumes** a reply it recognises as the answer to a query it sent, but
+**forwards** a malformed or wrong-*type* reply to the foreground
+program, where a cooked-mode reader (a shell at its prompt) echoes it as
+visible garbage — "escape sequences on screen".
+
+The check captures the replies our terminal generates (the headless
+`Session` is `Term`'s responder, byte-identical to `Controller`) and
+feeds them to the tmux oracle **as host input**, over a real pty so they
+travel tmux's genuine reply-recognition path. Anything tmux leaks into
+the pane is the failure, reported as the leaked lines. This is
+irreducibly host-side: re-interpreting the reply in our own terminal
+can't see it (we just consume our own DCS). Needs the tmux oracle;
+without it the check is skipped. It is exactly how the DA2 (`\e[>c`) leak
+was caught: a DA3 DCS (`\eP!|00000000\e\\`) sent in answer to DA1/DA2 is
+unrecognised by tmux and printed `^[P!|00000000^[\` on screen. The fix
+was to answer each Device Attributes variant with its correct reply
+type (`CSI ? … c` / `CSI > … c` / `DCS ! | … ST`).
 
 ### `trace` — render-call log (informational)
 

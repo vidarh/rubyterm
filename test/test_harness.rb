@@ -105,9 +105,51 @@ class TestSession < Minitest::Test
   end
 
   def test_responses_captured
+    # The session captures the query replies the live terminal would
+    # write to the pty, byte-identical to Controller's, so the responses
+    # check can submit them to the host.
     s = Harness::Session.new(cols: 20, rows: 5)
     s.feed("\e[6n")
     assert_equal "\e[1;1R", s.responses
+  end
+
+  def test_device_attributes_replies_are_type_correct
+    # DA1/DA2/DA3 each demand a distinct reply *type*; answering with the
+    # wrong kind is what made tmux leak the reply onto the screen.
+    { "\e[c"  => "\e[?1;2c",          # DA1 -> CSI ? ... c
+      "\e[0c" => "\e[?1;2c",
+      "\e[>c" => "\e[>0;10;1c",       # DA2 -> CSI > ... c
+      "\e[=c" => "\x1bP!|00000000\x1b\\" # DA3 -> DCS ! | ... ST
+    }.each do |query, reply|
+      s = Harness::Session.new(cols: 20, rows: 5)
+      s.feed(query)
+      assert_equal reply, s.responses, "wrong reply for #{query.inspect}"
+    end
+  end
+
+  def test_responses_check_skipped_without_tmux_oracle
+    # The leak is a host-side property; with no host oracle the check
+    # cannot be evaluated and must not pretend to pass meaningfully.
+    s = Harness::Session.new(cols: 80, rows: 5)
+    s.feed("\e[6n")
+    check = Harness::Checks.responses_check(s.responses, cols: 80, rows: 5,
+                                            oracle: "none")
+    assert check["pass"]
+    assert check["skipped"]
+  end
+
+  def test_responses_check_distinguishes_leaking_reply_via_tmux
+    skip "tmux not available" unless Harness::OracleTmux.available?
+    # Ground truth: tmux consumes a correct DA reply but leaks the old
+    # DA3-DCS-for-DA2 reply into the pane as visible text.
+    good = Harness::Checks.responses_check("\e[>0;10;1c", cols: 80, rows: 24,
+                                           oracle: "tmux")
+    assert good["pass"], "correct DA2 reply flagged as leaking: #{good.inspect}"
+
+    bad = Harness::Checks.responses_check("\x1bP!|00000000\x1b\\",
+                                          cols: 80, rows: 24, oracle: "tmux")
+    refute bad["pass"], "leaking DA3 reply not caught: #{bad.inspect}"
+    refute_empty bad["leaked"]
   end
 
   def test_redraw_invariant_holds_for_plain_text
