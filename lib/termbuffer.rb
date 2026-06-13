@@ -41,6 +41,18 @@ class ScrBuf
     @scrbuf[i] = line
   end
 
+  # Read a line by row index, mapping negative rows into the scrollback
+  # buffer (row -1 is the most recent scrolled-off line). Unlike #[] this
+  # is non-mutating and never auto-vivifies, so it is safe for read-only
+  # traversal (e.g. selection extraction across scrollback).
+  def line_at(y)
+    if y < 0 && !@scrollback_buffer.empty?
+      scrollback_index = @scrollback_buffer.size + y
+      return scrollback_index >= 0 ? @scrollback_buffer[scrollback_index] : nil
+    end
+    @scrbuf[y]
+  end
+
   def delete_line(y)
     @lineattrs.slice!(y)
     @scrbuf.slice!(y)
@@ -120,7 +132,7 @@ class ScrBuf
     xend,ymax = epos.first, epos.end
 
     (spos.end..ymax).each do |y|
-      line = @scrbuf[y] || ""
+      line = line_at(y) || ""
       xmax = y == ymax ? xend+1 : line.length-1
       xmax = [xmax,line.length-1].min
       xmax = 0 if xmax < 0

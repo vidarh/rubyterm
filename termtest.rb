@@ -330,14 +330,20 @@ class RubyTerm
   # FIXME: Cursor, selection etc. are "special" overlays on top of attributes.
   # Allow the terminal to set a set of positions + fg/bg, and a set of ranges.
   def render_selection
-    # This should work reasonably well
+    # Selection positions are in *buffer* coordinates (negative rows are
+    # scrollback); the screen row is buffer_row + scrollback_count. Damage
+    # is tracked in screen coordinates so it can be repainted later.
+    sb = @window.scrollback_count
     olddamage = @selection_damage || Set.new
     @selection_damage = Set.new
     @buffer.each_character_between(@select_startpos[0]..@select_startpos[1], @select_endpos[0]..@select_endpos[1]) do |x,y,cell|
-      @selection_damage << [x,y]
-      @buffer.redraw_with(x,y, fg: 0xffffff, bg: 0xff00ff)
+      sy = y + sb
+      next if sy < 0 || sy >= @term.height
+      @selection_damage << [x,sy]
+      @buffer.redraw_cell_at(x, sy, cell, fg: 0xffffff, bg: 0xff00ff)
     end
-    redraw_positions(olddamage - @selection_damage)
+    # Repaint cells that left the selection with their displayed content.
+    (olddamage - @selection_damage).each { |x,sy| @buffer.redraw_display(x, sy, sb) }
     @buffer.draw_flush
     #@window.flush
   end
@@ -350,14 +356,15 @@ class RubyTerm
     @buffer.each_character_between(startpos[0]..startpos[1], endpos[0]..endpos[1]) do |x,y,cell|
       str += "\n" if ypos && y != ypos
       ypos = y
-      str << cell[0].chr rescue ""
+      str << (cell[0].chr(Encoding::UTF_8) rescue "")
     end
     str
   end
 
   def clear_selection_if_set
     return if !@select_startpos
-    redraw_positions(@selection_damage)
+    sb = @window.scrollback_count
+    (@selection_damage || []).each { |x,sy| @buffer.redraw_display(x, sy, sb) }
     @select_startpos = nil
     # FIXME
     redraw
@@ -373,12 +380,18 @@ class RubyTerm
     y = pkt.event_y / char_h
     case @term.mouse_mode
     when nil
+      # Selection works in buffer coordinates: when scrolled back, the
+      # row under the pointer is a scrollback line (buffer row
+      # screen_y - scrollback_count, negative for scrollback). Without
+      # this, selection/copy reads the live screen instead of what is
+      # actually displayed.
+      y -= @window.scrollback_count
       # New selection, but the old has not been cleared yet
       if @released
         clear_selection_if_set
         @released = false
       end
-      
+
       @select_startpos ||= [x,y]
       if [x,y] != @select_endpos
         @select_endpos = [x,y]

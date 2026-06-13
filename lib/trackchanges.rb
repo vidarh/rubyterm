@@ -106,6 +106,25 @@ class TrackChanges
     draw_buffered(x,y, cell, true)
   end
 
+  # Draw an already-resolved cell at a *screen* position, optionally
+  # overriding fg/bg. Used when the cell's buffer row and its screen row
+  # differ (selection highlighting while scrolled back into scrollback).
+  def redraw_cell_at(screen_x, screen_y, cell, fg: nil, bg: nil)
+    cell = Array(cell).dup
+    cell[0] ||= " "
+    cell[1] = fg if fg
+    cell[2] = bg if bg
+    draw_buffered(screen_x, screen_y, cell, true)
+  end
+
+  # Repaint whatever is currently displayed at a screen position, given the
+  # active scrollback offset (so scrollback rows repaint their scrolled-off
+  # content rather than the live buffer's).
+  def redraw_display(screen_x, screen_y, scrollback_offset = 0)
+    buffer_y = screen_y - scrollback_offset
+    draw_buffered(screen_x, screen_y, @buffer.get(screen_x, buffer_y), true)
+  end
+
   def draw_flush
     if @bufx && @buf && @buf[0] && !@buf[0].empty?
       c = @buf[0]
