@@ -14,7 +14,7 @@ class TrackChanges
     @cleared = true
 
     @buffer.clear
-    @adapter.clear
+    @adapter.clear unless @adapter.scrollback_mode
   end
 
   def clear_changes
@@ -48,19 +48,19 @@ class TrackChanges
   def delete_lines(y, num, maxy)
     draw_flush
     num.times.each {|i| @buffer.delete_line(y+i) }
-    @adapter.delete_lines(y, num, @buffer.scroll_end||maxy)
+    @adapter.delete_lines(y, num, @buffer.scroll_end||maxy) unless @adapter.scrollback_mode
   end
 
   def insert_lines(y, num, maxy)
     draw_flush
     num.times.each {|i| @buffer.insert_line(y+i) }
-    @adapter.insert_lines(y, num, @buffer.scroll_end || maxy)
+    @adapter.insert_lines(y, num, @buffer.scroll_end || maxy) unless @adapter.scrollback_mode
   end
 
   def clear_line(*args)
     draw_flush
     @buffer.clear_line(*args)
-    @adapter.clear_line(*args)
+    @adapter.clear_line(*args) unless @adapter.scrollback_mode
   end
 
   def set(x,y,c,fg,bg,mode)
@@ -68,8 +68,9 @@ class TrackChanges
 
     # MUST be before the @buffer.set below,
     # as it currently uses @buffer.get to compare and
-    # avoid unnecessary redraws
-    draw_buffered(x,y,[c,fg,bg,mode])
+    # avoid unnecessary redraws. Skipped while scrolled back so live output
+    # does not paint over the scrolled-back view (the buffer still updates).
+    draw_buffered(x,y,[c,fg,bg,mode]) unless @adapter.scrollback_mode
     @buffer.set(x,y,c,fg,bg,mode)
   end
 
@@ -85,6 +86,7 @@ class TrackChanges
   end
 
   def redraw_blink
+    return nil if @adapter.scrollback_mode
     b = @buffer.blinky
     return nil if b.empty?
     b.each { |x,y| redraw(x,y) }

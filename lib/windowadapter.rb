@@ -20,6 +20,16 @@ class WindowAdapter
   def char_h = @window.char_h
   def clear  = @window.clear(0,0,@window.width,@window.height)
 
+  # True while the view is scrolled back into history. Live (pty-driven)
+  # screen writes are suppressed in this state so output doesn't paint over
+  # the scrolled-back display; the buffer is still updated underneath.
+  def scrollback_mode = @window.scrollback_mode
+
+  # A line has entered history while scrolled back: keep the same absolute
+  # lines in view (and the selection mapping consistent) by deepening the
+  # offset instead of letting the viewport drift.
+  def scrollback_anchor = @window.scrollback_anchor
+
   def dim(col) #FIXME
     [col].pack("l").each_byte.map{|b| b.ord*0.4 }.pack("C*").unpack("l")[0]
   end

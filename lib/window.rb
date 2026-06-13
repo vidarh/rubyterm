@@ -60,6 +60,15 @@ class Window
     true
   end
 
+  # Keep the viewport anchored to the same history lines when a new line is
+  # pushed into scrollback while we're scrolled back. Without this the
+  # displayed (frozen) lines and the selection->buffer mapping would drift
+  # apart as output streams.
+  def scrollback_anchor
+    return if @scrollback_count <= 0
+    @scrollback_count += 1
+  end
+
   # Decrease scrollback counter
   def scrollback_page_down
     return false if @scrollback_count <= 0

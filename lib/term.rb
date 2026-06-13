@@ -124,7 +124,7 @@ class Term
     @buffer.scroll_start = nil
     @buffer.scroll_end   = nil
     @buffer.clear
-    @adapter.clear
+    @adapter.clear unless @adapter.scrollback_mode
   end
 
   # ED - Erase In Display - ESC [ Ps J
@@ -185,10 +185,16 @@ class Term
     num.times do
       @buffer.draw_flush
       @buffer.scroll_up
-      # WindowAdapter treats the second argument as the inclusive last row
-      # of the scrolling region; when unset the region ends at height-1.
-      @adapter.scroll_up(@buffer.scroll_start.to_i,
-                         @buffer.scroll_end || height - 1)
+      if @adapter.scrollback_mode
+        # Scrolled back: don't paint, but anchor the viewport so the line
+        # that just entered history keeps the same lines on screen.
+        @adapter.scrollback_anchor
+      else
+        # WindowAdapter treats the second argument as the inclusive last row
+        # of the scrolling region; when unset the region ends at height-1.
+        @adapter.scroll_up(@buffer.scroll_start.to_i,
+                           @buffer.scroll_end || height - 1)
+      end
     end
   end
 
@@ -266,12 +272,16 @@ class Term
   end
 
   def clear_cursor
+    # Don't touch the screen while scrolled back; the live cursor must not
+    # paint over the scrolled-back view.
+    return if @adapter.scrollback_mode
     return if !@cursor_pos
     @buffer.redraw(*@cursor_pos)
     @cursor_pos = nil
   end
 
   def draw_cursor
+    return if @adapter.scrollback_mode
     # If the old cursor is still on screen,
     # we clear it. Note that this does not take into account
     # scrolling at present, so you can't *rely* on it.
