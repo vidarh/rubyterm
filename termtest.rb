@@ -122,6 +122,9 @@ class RubyTerm
     # Make sure changes are rendered and cursor is shown
     @buffer.draw_flush
     @term.draw_cursor
+    # A full repaint draws only buffer content; restore the selection
+    # overlay on top so it survives resizes, exposes and scrollback redraws.
+    reapply_selection
   end
 
   def render_text_buffer
@@ -197,6 +200,10 @@ class RubyTerm
     # a certain amount of time has elapsed.
     @term.draw_cursor
     @buffer.draw_flush # Ensure everything has been rendered
+    # Output just repainted cells without the selection overlay; re-stamp
+    # it so a streaming program (top, full-screen apps) doesn't erase the
+    # highlight out from under an in-progress copy.
+    reapply_selection
   end
 
   # Request a redraw (from the event thread). Records the latest pending
@@ -339,6 +346,23 @@ class RubyTerm
   end
 
   def redraw_positions(positions) = positions.each { |pos| @buffer.redraw(*pos) }
+
+  # Re-stamp the active selection highlight on top of freshly drawn
+  # content. The selection is an overlay that is NOT stored in the buffer,
+  # so any output - or a full redraw - that repaints those cells erases the
+  # highlight. Re-applying it after each draw keeps the selection visible
+  # while a program streams output (e.g. top repainting, or a full-screen
+  # app), which a one-shot paint at mouse-time cannot do.
+  def reapply_selection
+    return unless @select_startpos && @select_endpos
+    sb = @window.scrollback_count
+    @buffer.each_character_between(@select_startpos[0]..@select_startpos[1], @select_endpos[0]..@select_endpos[1]) do |x,y,cell|
+      sy = y + sb
+      next if sy < 0 || sy >= @term.height
+      @buffer.redraw_cell_at(x, sy, cell, fg: 0xffffff, bg: 0xff00ff)
+    end
+    @buffer.draw_flush
+  end
 
   # FIXME: Cursor, selection etc. are "special" overlays on top of attributes.
   # Allow the terminal to set a set of positions + fg/bg, and a set of ranges.
