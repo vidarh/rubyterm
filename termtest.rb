@@ -175,9 +175,10 @@ class RubyTerm
   # synchronization.
   def process_chunk(str)
     case str
-    when :blink then return blink
-    when :flush then return @window.flush
-    when Array  then return resize(str[1], str[2]) if str[0] == :resize
+    when :blink   then return blink
+    when :flush   then return @window.flush
+    when :repaint then return redraw
+    when Array    then return resize(str[1], str[2]) if str[0] == :resize
     end
 
     # FIXME: Could be smarter about this; it's only needed if the
@@ -383,11 +384,16 @@ class RubyTerm
     when X11::Form::KeyRelease,
          X11::Form::NoExposure
       # Intentionally ignored
-    when X11::Form::Expose, X11::Form::ConfigureNotify
-      # resize/redraw mutates the buffer; run it on the processing
-      # thread (via the queue) rather than here on the event thread, or
-      # it races a concurrent feed and corrupts cells.
+    when X11::Form::ConfigureNotify
+      # Real size change: pkt.width/height are the new window size.
+      # Routed through the queue so resize (which mutates the buffer)
+      # runs on the processing thread, not racing a concurrent feed.
       @queue << [:resize, pkt.width, pkt.height]
+    when X11::Form::Expose
+      # Damage, NOT a size change: pkt.width/height are the exposed
+      # rectangle, not the window. Repaint the current buffer; never
+      # resize here (doing so shrinks the terminal to the strip size).
+      @queue << :repaint
     else
       p pkt
     end

@@ -114,6 +114,34 @@ was observed during testing — worth a closer look before relying on it.)
   behind — don't mistake that faint layer for corruption; the bug is in
   the solid foreground text.
 
+## Resize: flash, freeze, and wrong size
+
+Resize bugs live entirely in the live X layer (the harness never resizes
+a real window), so they need live driving + `xwininfo`/screenshots.
+Three distinct bugs, all found this way:
+
+- **Flash (whole window blanks on resize).** The window was created with
+  the default **bit gravity = ForgetGravity**, so on every resize the X
+  server *discards the window contents* and fills with the background
+  before we repaint. `xwininfo -id <win> -all | grep Gravity` shows it.
+  Fix: create the window with `CWBitGravity => 1` (NorthWestGravity) so
+  the server retains the existing pixels (anchored top-left).
+- **Resize doesn't track the window / freezes.** The event mask had
+  `SubstructureNotifyMask` (events about *child* windows) but **not
+  `StructureNotifyMask`** (events about *this* window) -- so the window
+  never received `ConfigureNotify` for its own resize. Resize had been
+  limping along on Expose alone. Fix: add `StructureNotifyMask`.
+- **Resize shrinks to a thin strip.** `Expose` and `ConfigureNotify`
+  were handled identically (`resize(pkt.width, pkt.height)`), but
+  Expose's width/height are the **damage rectangle**, not the window
+  size -- a partial Expose resized the terminal to a few rows. Fix:
+  `ConfigureNotify` resizes; `Expose` only repaints.
+
+General rule: in X, **ConfigureNotify = size changed** (resize),
+**Expose = pixels lost** (repaint). Never resize on Expose, and make
+sure the window actually selects `StructureNotifyMask` or its own
+ConfigureNotify never arrives.
+
 ## Triage checklist: "app looks corrupted in rterm"
 
 1. Reproduce live; screenshot **and** `dump_state`. Clean buffer + dirty

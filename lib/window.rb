@@ -86,7 +86,8 @@ class Window
     @alpha  = 0x80 << 24
     @opaque = 0xff << 24
 
-    eventmask = X11::Form::SubstructureNotifyMask |
+    eventmask = X11::Form::StructureNotifyMask    | # ConfigureNotify for our own resize
+          X11::Form::SubstructureNotifyMask |
           X11::Form::ButtonReleaseMask      |
           X11::Form::Button1MotionMask      |
           X11::Form::ExposureMask           |
@@ -103,6 +104,11 @@ class Window
       values: {
         X11::Form::CWBackPixel   => 0x00 | @alpha, # ARGB background; transparency
         X11::Form::CWBorderPixel => 0,
+        # Bit gravity NorthWest (1): on resize the server retains the
+        # existing pixels (anchored top-left) instead of discarding them
+        # to the background. The default ForgetGravity blanks the whole
+        # window every resize before we repaint -- a visible flash.
+        X11::Form::CWBitGravity  => 1,
         X11::Form::CWEventMask   => eventmask,
       }
     )
