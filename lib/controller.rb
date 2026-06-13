@@ -52,7 +52,7 @@ class Controller
   # DA3 (CSI = c): DECRPTUI unit id, a DCS string (! | DDDDDDDD ST).
   def device_attr_tertiary  = @wr.write("\x1bP!|00000000\x1b\\")
 
-  def report_size(w, h) = (@master.winsize = [h + 1, w])
+  def report_size(w, h) = (@master.winsize = [h, w])
   def report_position(x, y) = @wr.write("\e[#{y + 1};#{x + 1}R")
 
   # These are semantically different, though practically similar

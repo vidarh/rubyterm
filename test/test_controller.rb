@@ -113,4 +113,23 @@ class TestController < Minitest::Test
     assert_equal mock_term, controller.instance_variable_get(:@term)
     assert_equal({}, controller.instance_variable_get(:@config))
   end
+
+  def test_report_size_reports_exact_terminal_size
+    skip "Controller not available" unless @controller_available
+
+    # The pty winsize handed to the child must match the terminal's real
+    # dimensions exactly. Reporting one extra row (the historical
+    # `[h + 1, w]` bug) makes every full-screen, diff-rendering app
+    # (htop, emacs, ...) draw a row too many and shift/overflow its
+    # output, corrupting the screen. winsize is [rows, cols].
+    controller = Controller.new(nil, {})
+    captured = nil
+    master = Object.new
+    master.define_singleton_method(:winsize=) { |rc| captured = rc }
+    controller.instance_variable_set(:@master, master)
+
+    controller.report_size(80, 24) # report_size(cols, rows)
+
+    assert_equal [24, 80], captured
+  end
 end
