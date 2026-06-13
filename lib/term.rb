@@ -199,7 +199,10 @@ class Term
   end
 
   def scroll_if_needed
-    dy = @y - bottom
+    # Scroll at the scroll-region bottom margin, which (like IND/RI)
+    # applies regardless of origin mode - LF and wrap both scroll the
+    # region, not the whole screen, when a region is set.
+    dy = @y - region_bottom
     if dy > 0
       scroll_up(dy)
       @y -= dy
@@ -458,9 +461,12 @@ class Term
         p @esc
       end
     when "r"
-      p [:SET_SCROLL, args]
       @buffer.scroll_start = (args[0] || 1)-1
       @buffer.scroll_end   = (args[1] || height)-1
+      # DECSTBM homes the cursor: to the origin (region top) in origin
+      # mode, otherwise to screen home.
+      @x = 0
+      @y = origin
     else
       p @esc
     end
