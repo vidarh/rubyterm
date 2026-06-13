@@ -277,6 +277,7 @@ class RubyTerm
       else
         @primary = primary
       end
+      exit_scrollback
       @controller.paste(primary)
       return
     when "C"
@@ -294,6 +295,7 @@ class RubyTerm
         else
           @clipboard = clipboard
         end
+        exit_scrollback
         @controller.paste(clipboard)
         return
       end
@@ -304,7 +306,12 @@ class RubyTerm
       redraw
       render_text_buffer
     end
-    @controller.keypress(keysym_to_vt102(ks) || str)
+    payload = keysym_to_vt102(ks) || str
+    # Only snap to the live screen when we're actually sending input;
+    # bare modifiers (Ctrl/Shift) produce no payload and must not disturb
+    # scrollback (e.g. while setting up a Ctrl+Shift+C copy from history).
+    exit_scrollback unless payload.nil? || payload.empty?
+    @controller.keypress(payload)
   end
 
   def blink
@@ -323,6 +330,12 @@ class RubyTerm
     end
     # FIXME: It bugs out at some point?
     @buffer.redraw_blink if doblink
+  end
+
+  # Sending input to the pty must snap the view back to the live screen;
+  # otherwise typed/echoed output is drawn over the scrolled-back display.
+  def exit_scrollback
+    redraw if @window.scrollback_reset
   end
 
   def redraw_positions(positions) = positions.each { |pos| @buffer.redraw(*pos) }

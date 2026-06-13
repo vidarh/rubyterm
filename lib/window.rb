@@ -51,6 +51,15 @@ class Window
     draw_scrollback_indicator if @scrollback_count <= 10
   end
   
+  # Snap straight back to the live screen (bottom of scrollback). Returns
+  # true if we were scrolled back, so the caller knows a redraw is needed.
+  def scrollback_reset
+    return false if @scrollback_count <= 0
+    @scrollback_count = 0
+    @dirty = true
+    true
+  end
+
   # Decrease scrollback counter
   def scrollback_page_down
     return false if @scrollback_count <= 0
