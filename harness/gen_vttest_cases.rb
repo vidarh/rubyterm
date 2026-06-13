@@ -51,6 +51,15 @@ CASES = {
   # bottom margin.
   "nel-scroll"      => "\e[5;1HA\eEB\eEC",
 
+  # --- Control characters inside escape sequences ---------------------
+  # A C0 control byte inside a CSI is executed immediately while the CSI
+  # keeps parsing (vttest "cursor-control chars inside ESC sequences").
+  # The BS inside the SGR moves the cursor back, so Z overwrites 'c' -> abZ.
+  "ctrl-in-csi"     => "abc\e[\b41mZ",
+  # A CR inside the CSI returns to column 0 mid-sequence; the CUP then still
+  # completes. 'Y' lands at the CUP target, 'Z' (after) at column 1.
+  "cr-in-csi"       => "abcdef\e[1\r;3HY",
+
   # --- DECSC / DECRC ---------------------------------------------------
   # Save cursor + attributes, move and change them, then restore: the
   # final write lands at the saved position. (Attribute restore is also

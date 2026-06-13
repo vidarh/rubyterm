@@ -55,5 +55,7 @@ shell="/home/vidarh/bin/rsh"
 #   "window" - ask the window manager to resize the window to fit the new
 #              column count at the current font. Most "native", but depends
 #              on the WM honouring the resize request.
+#   "off"    - ignore the column switch entirely (apps that send ESC[?3h/l
+#              cannot resize/rescale your terminal).
 #
 #deccolm = "font"

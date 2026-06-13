@@ -171,6 +171,7 @@ class RubyTerm
   # columns fit the current window, keeping the row count; window mode asks
   # the WM to resize. Either way the pty is told the new size.
   def set_columns(cols)
+    return if @deccolm_mode == :off   # ignore DECCOLM entirely
     cols = cols.to_i
     return if cols <= 0 || @pixelw.to_i <= 0
 

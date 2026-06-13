@@ -222,22 +222,43 @@ class Window
     setup_fonts
   end
 
-  # DECCOLM font mode: narrow/widen the glyph cell so +cols+ columns fill
-  # +pixel_width+, keeping the row height (and row count) constant. Iterates
-  # because fixed_width is a ceil() of a scaled advance.
+  # DECCOLM font mode: narrow/widen the glyph cell so +cols+ columns fit
+  # within +pixel_width+, keeping the row height (and row count) constant.
+  #
+  # char_w is ceil(scaled advance), so we must UNDERSHOOT: aim for
+  # char_w <= floor(pixel_width / cols), otherwise cols * char_w exceeds the
+  # window and the rightmost columns fall off the right edge. A small right
+  # margin is fine; clipping columns is not.
   def fit_columns(cols, pixel_width)
     return if cols <= 0 || pixel_width <= 0
-    target = pixel_width.to_f / cols
-    6.times do
-      cw = char_w
-      break if cw <= 0
-      ratio = target / cw
-      break if (ratio - 1.0).abs < 0.02
-      @col_scale = (@col_scale * ratio).clamp(3.0, 200.0)
-      @char_w = @char_h = nil
-      setup_fonts
+    target = pixel_width / cols          # integer floor: cols*target <= width
+    return if target < 1
+    # Proportional first guess from the current cell width.
+    @col_scale = (@col_scale.to_f * target / [char_w, 1].max).clamp(2.0, 400.0)
+    reset_font!
+    # Shrink until the columns actually fit (char_w may have rounded up).
+    while char_w > target && @col_scale > 2.0
+      @col_scale *= 0.96
+      reset_font!
+    end
+    # Grow back toward the target as long as we still fit, for the widest
+    # cell that doesn't overflow.
+    while @col_scale < 400.0
+      @col_scale *= 1.02
+      reset_font!
+      if char_w > target
+        @col_scale /= 1.02
+        reset_font!
+        break
+      end
     end
   end
+
+  def reset_font!
+    @char_w = @char_h = nil
+    setup_fonts
+  end
+  private :reset_font!
 
   # DECCOLM window mode: ask X to resize the window to the given pixel size
   # (the WM may or may not honour it; the resulting ConfigureNotify drives

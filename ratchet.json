@@ -34,6 +34,8 @@
   "synthetic/text-wrap",
   "vttest/autowrap-edge",
   "vttest/bs-at-col1",
+  "vttest/cr-in-csi",
+  "vttest/ctrl-in-csi",
   "vttest/cursor-clamp",
   "vttest/decsc-decrc",
   "vttest/ind-at-region-bottom",

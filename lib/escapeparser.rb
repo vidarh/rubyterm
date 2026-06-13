@@ -31,8 +31,14 @@ class EscapeParser
         @state = :complete
       end
     when :csi
+      # A C0 control byte inside a CSI is executed immediately and the
+      # sequence keeps parsing (per ECMA-48) - it must NOT be folded into
+      # the sequence or terminate it. Returning false routes it to Term's
+      # handle_control while @esc stays in :csi; ESC (27) restarts the
+      # sequence there. (vttest "cursor-control chars inside ESC sequences".)
+      return false if ch < 32
       @str << c
-      @state = :complete if /[[:alpha:]]|[[:cntrl:]]|[@]/.match(c)
+      @state = :complete if /[[:alpha:]]|[@]/.match(c)
     when :oc
       if ch == 7 then @state = :complete
       elsif ch < 32 then return false
