@@ -17,7 +17,7 @@ class Line < Array
 end
 
 class ScrBuf
-  attr_reader :scrollback_buffer, :scrollback_lineattrs
+  attr_reader :scrollback_buffer, :scrollback_lineattrs, :w
   
   def initialize
     @w = nil
@@ -255,6 +255,11 @@ class TermBuffer
     num.times.each do |i|
       l.insert(x+i, cell)
     end
+    # ICH/IRM push the rest of the line right; cells shifted past the right
+    # margin are discarded (the line never grows beyond the screen width),
+    # so a later DCH can't pull them back into view.
+    w = @scrbuf.w
+    l.slice!(w..) if w && l.length > w
   end
 
   # DCH: delete num cells at (x,y), shifting the remainder of the line
