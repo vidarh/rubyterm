@@ -143,14 +143,6 @@ class RubyTerm
   def resize(w,h)
     @pixelw||=0
     @pixelh||=0
-    # Remember the user's "natural" window width so DECCOLM can base its
-    # column fit on it. A resize we requested ourselves to trim the DECCOLM
-    # margin (width == @deccolm_pending_width) is NOT a natural resize.
-    if w == @deccolm_pending_width
-      @deccolm_pending_width = nil
-    else
-      @nat_width = w
-    end
     should_redraw = w >= @pixelw || h >= @pixelh
     p [:should_redraw] if should_redraw
     @pixelw=w
@@ -189,24 +181,16 @@ class RubyTerm
       return
     end
 
-    # font mode. Narrow the cell to fit `cols` columns in the user's
-    # natural window width, set the grid, then trim the window to exactly
-    # cols*char_w so there is no right margin from integer-cell rounding.
-    # Basing the fit on @nat_width (not the possibly-already-trimmed
-    # @pixelw) keeps 80<->132 switches from drifting.
-    base = (@nat_width && @nat_width > 0) ? @nat_width : @pixelw.to_i
+    # font mode. Rescale the glyph cell (up or down) so `cols` columns fit
+    # the current window, keeping the row count. The window is NOT resized;
+    # integer cell widths mean the rightmost columns may not reach the window
+    # edge exactly (an accepted artefact - we don't do sub-pixel placement).
     rows = @term.height
-    @window.fit_columns(cols, base)
+    @window.fit_columns(cols, @pixelw.to_i)
     @buffer.on_resize(cols, rows)
     @term.resize(cols, rows)
     @controller.report_size(cols, rows)
     redraw
-
-    target_w = cols * char_w
-    if target_w > 0 && target_w != @pixelw
-      @deccolm_pending_width = target_w
-      @window.request_pixel_size(target_w, @pixelh.to_i)
-    end
   end
 
 

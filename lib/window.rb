@@ -222,13 +222,16 @@ class Window
     setup_fonts
   end
 
-  # DECCOLM font mode: narrow/widen the glyph cell so +cols+ columns fit
-  # within +pixel_width+, keeping the row height (and row count) constant.
+  # DECCOLM font mode: scale the glyph cell so +cols+ columns fit within
+  # +pixel_width+, keeping the row height (and row count) constant. The
+  # window is not resized; the font scales (down for 132, up for a wide
+  # window) to fill it as best integer cells allow.
   #
-  # char_w is ceil(scaled advance), so we must UNDERSHOOT: aim for
+  # char_w is ceil(scaled advance), so we UNDERSHOOT: aim for
   # char_w <= floor(pixel_width / cols), otherwise cols * char_w exceeds the
-  # window and the rightmost columns fall off the right edge. A small right
-  # margin is fine; clipping columns is not.
+  # window and the rightmost columns fall off the right edge. Integer cells
+  # mean a small right margin can remain; that is accepted (we don't do
+  # sub-pixel cell placement).
   def fit_columns(cols, pixel_width)
     return if cols <= 0 || pixel_width <= 0
     target = pixel_width / cols          # integer floor: cols*target <= width
