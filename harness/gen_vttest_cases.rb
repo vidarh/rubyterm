@@ -45,6 +45,29 @@ CASES = {
   # "ABCXXXXX". CSI 4 l restores replace mode. (vttest VT102 "Insert Mode".)
   "insert-mode"     => "\e[2J\e[1;1HXXXXX\e[1;1H\e[4hABC\e[4l",
 
+  # --- Insert / Delete Line (IL / DL) ---------------------------------
+  # IL below the top of the screen must not disturb the rows above the
+  # cursor. The incremental blit used to scroll from screen row 0 (it
+  # ignored the cursor row), so a single IL on row 10 dragged the top
+  # line down and blanked it. (vttest VT102 Insert/Delete Line.)
+  "il-preserves-rows-above" =>
+    "\e[2J\e[1;1HKEEP-THIS-TOP-LINE\e[10;1HMIDDLE\e[10;1H\e[1L",
+  # Deleting more lines than the scroll region holds clears the region
+  # but must leave the rows above it intact. The blit geometry went
+  # negative for num > region-height and clamped the clear to row 0,
+  # wiping lines outside the region. ('KEEP-ABOVE-REGION' on row 1 must
+  # survive a 40-line DL inside a 6-row region.)
+  "dl-overflow-region" =>
+    "\e[2J\e[1;1HKEEP-ABOVE-REGION\e[3;8r\e[3;1Hin-region\e[3;1H\e[40M",
+  # Same overflow guard for IL: inserting far more lines than the region
+  # holds blanks the region without touching the rows above it.
+  "il-overflow-region" =>
+    "\e[2J\e[1;1HKEEP-ABOVE-REGION\e[3;8r\e[3;1Hin-region\e[3;1H\e[40L",
+  # DCH on a double-width line shifts the doubled-width glyphs left. The
+  # incremental redraw must place them at twice the column origin, like
+  # the live renderer, or the shifted run overlaps the survivors.
+  "dwl-dch"         => "\e[2J\e[1;1H\e#6ABCDEFGHIJ\e[1;1H\e[3P",
+
   # --- Reset (RIS) ----------------------------------------------------
   # RIS (ESC c) is a full reset: clears the screen, homes the cursor, and
   # restores the scroll region, origin mode, charsets and attributes. After

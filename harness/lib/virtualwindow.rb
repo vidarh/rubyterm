@@ -78,16 +78,21 @@ module Harness
       return draw_markers(x, y, c.length) if @render_mode == :markers
 
       cw, chh = @char_w, @char_h
+      # Double-width/height lines render each cell twice as wide AND at
+      # twice the x origin, exactly like Window#draw (which passes x*2 to
+      # the double-size font renderer). Without the x*2 here, runs split at
+      # different column boundaries (incremental vs full redraw) overlap
+      # each other and the redraw check reports phantom divergences.
       case lineattrs
       when :dbl_upper
-        fill(x, y, c.length * cw * 2, chh * 2, 0xff000000 | bg)
-        draw_glyphs(x, y, c, fg, cw * 2, chh * 2)
+        fill(x * 2, y, c.length * cw * 2, chh * 2, 0xff000000 | bg)
+        draw_glyphs(x * 2, y, c, fg, cw * 2, chh * 2)
       when :dbl_lower
-        fill(x, y, c.length * cw * 2, chh * 2, 0xff000000 | bg)
-        draw_glyphs(x, y - chh, c, fg, cw * 2, chh * 2)
+        fill(x * 2, y, c.length * cw * 2, chh * 2, 0xff000000 | bg)
+        draw_glyphs(x * 2, y - chh, c, fg, cw * 2, chh * 2)
       when :dbl_single
-        fill(x, y, c.length * cw * 2, chh, 0xff000000 | bg)
-        draw_glyphs(x, y, c, fg, cw * 2, chh)
+        fill(x * 2, y, c.length * cw * 2, chh, 0xff000000 | bg)
+        draw_glyphs(x * 2, y, c, fg, cw * 2, chh)
       else
         fill(x, y, c.length * cw, chh, 0xff000000 | bg)
         draw_glyphs(x, y, c, fg, cw, chh)

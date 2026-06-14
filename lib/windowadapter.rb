@@ -62,13 +62,28 @@ class WindowAdapter
   end
 
   def insert_lines(y, num, maxy)
-    @window.scroll_down(char_h*(num-1),
-      @term.term_width * char_w,
-      (maxy-num+1)*char_h,
-      char_h*num)
+    # Inserting more lines than fit between y and the region bottom just
+    # blanks the whole [y..maxy] span; clamp so the geometry below never
+    # goes negative (which would clear rows above the region - see DL).
+    num = [num, maxy - y + 1].min
+    return if num <= 0
+    # Move the rows from the insertion point down to the region bottom -
+    # [y .. maxy-num] - down by num rows, into [y+num .. maxy];
+    # Window#scroll_down clears the vacated rows at the top (the inserted
+    # blanks). The old code scrolled from screen row 0 and ignored y, so an
+    # IL anywhere below the top dragged every line above it (and outside the
+    # scroll region) down, blanking row 0.
+    @window.scroll_down(y * char_h, @term.term_width * char_w,
+      (maxy - y - num + 1) * char_h, num * char_h)
   end
 
   def delete_lines(y, num, maxy)
+    # Deleting more lines than the region holds clears [y..maxy] entirely.
+    # Without this clamp a large num gave Window#scroll_up a negative height
+    # and a negative clear origin that clamped to row 0, wiping lines above
+    # the scroll region.
+    num = [num, maxy - y + 1].min
+    return if num <= 0
     # Move the rows below the deleted block - [y+num .. maxy] - up by num
     # rows, into [y .. maxy-num]; Window#scroll_up clears the vacated rows
     # at the bottom of the region.
