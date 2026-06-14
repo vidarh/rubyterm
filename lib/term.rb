@@ -78,6 +78,10 @@ class Term
     # ONLCR already turns a program's "\n" into "\r\n", so off is both
     # correct and what tmux/xterm do.
     @lnm = false
+    # IRM (insert/replace mode). When set, printed characters are inserted
+    # at the cursor, shifting the rest of the line right, rather than
+    # overwriting. Default replace (off).
+    @irm = false
 
     # :x10, :v200, :v200_highlight, :btn_event, :any_event
     # FIXME: Only :btn_event_mouse supported so far
@@ -460,10 +464,11 @@ class Term
       when 3 then @tabs = []
       end
     when "h", "l"
-      # Standard (non-DEC-private) modes - SM/RM. CSI 20 h/l is LNM.
+      # Standard (non-DEC-private) modes - SM/RM. 4 = IRM, 20 = LNM.
       set = s[-1] == "h"
       args.each do |code|
         case code
+        when 4  then @irm = set
         when 20 then @lnm = set
         end
       end
@@ -524,7 +529,15 @@ class Term
       scroll_if_needed
       return delete if ch == 127
 
-      @buffer.set(@x, @y, charset[ch], fg, bg, @mode)
+      # IRM (insert mode): shift the rest of the line right and repaint it,
+      # then drop the new glyph into the gap.
+      if @irm
+        @buffer.insert(@x, @y, 1, [32,0,0,0])
+        @buffer.set(@x, @y, charset[ch], fg, bg, @mode)
+        redraw_line_from_cursor
+      else
+        @buffer.set(@x, @y, charset[ch], fg, bg, @mode)
+      end
       @y = clamph(@y)
       @x += 1
       scroll_if_needed

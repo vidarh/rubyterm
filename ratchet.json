@@ -41,6 +41,7 @@
   "vttest/cursor-clamp",
   "vttest/decsc-decrc",
   "vttest/ind-at-region-bottom",
+  "vttest/insert-mode",
   "vttest/nel-scroll",
   "vttest/ri-at-region-top",
   "vttest/tab-clear-all",

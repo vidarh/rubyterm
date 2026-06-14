@@ -39,6 +39,12 @@ CASES = {
   # to the next row. (From vttest's autowrap test.)
   "bs-pending-wrap" => "\e[?7h\e[1;80HB\b b",
 
+  # --- Insert mode (IRM) ----------------------------------------------
+  # CSI 4 h enables insert mode: printed characters insert at the cursor,
+  # shifting the rest of the line right. "ABC" inserted before "XXXXX" ->
+  # "ABCXXXXX". CSI 4 l restores replace mode. (vttest VT102 "Insert Mode".)
+  "insert-mode"     => "\e[2J\e[1;1HXXXXX\e[1;1H\e[4hABC\e[4l",
+
   # --- Cursor clamping at the margins ---------------------------------
   # CUF/CUB past the edges clamp at column 1 / last column; BS at col 1
   # does not move off the row.
