@@ -83,6 +83,7 @@ KEYMAP = {
   :enter => "\r",
   :backspace => "\x7F",
   :tab => "\t",
+  :XK_Escape => "\e",
   :f1 => "\e[11~",
   :f2 => "\e[12~",
   :f3 => "\e[13~",
