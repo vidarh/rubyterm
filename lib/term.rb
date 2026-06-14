@@ -339,6 +339,25 @@ class Term
     draw_cursor
   end
 
+  # Set a line's width/height attribute (DECDHL/DECDWL/DECSWL) and re-render
+  # the whole line: a single/double switch changes the size of glyphs
+  # already on the line, so the cells written before the attribute must be
+  # repainted (vttest sets the attribute *after* writing the text).
+  def set_line_attrs(attr)
+    @buffer.set_lineattrs(@y, attr)
+    clear_cursor
+    # Repaint this line and its neighbours from their own attributes. A
+    # (previous) double-height attribute on this line draws into the row
+    # above/below; switching to a shorter attribute must clear those
+    # spilled halves, which only repainting the neighbour rows does.
+    [@y - 1, @y, @y + 1].each do |row|
+      next if row < 0 || row >= height
+      (0...width).each {|x| @buffer.redraw(x, row) }
+    end
+    @buffer.draw_flush
+    draw_cursor
+  end
+
   def set_width_and_clear(w)
     # DECCOLM. Set the logical width, then let the display layer actually
     # realise the column change - by rescaling the font or resizing the
@@ -578,10 +597,10 @@ class Term
     when "E"; index; @x = 0     # NEL
     when "H"; @tabs = (@tabs << @x).sort.uniq
     when "M"; reverse_index     # RI
-    when "#3"; @buffer.set_lineattrs(@y, :dbl_upper) # FIXME: Flags
-    when "#4"; @buffer.set_lineattrs(@y, :dbl_lower) # FIXME: Flags
-    when "#5"; @buffer.set_lineattrs(@y, 0) # FIXME: Flags
-    when "#6"; @buffer.set_lineattrs(@y, :dbl_single) # FIXME: Flags
+    when "#3"; set_line_attrs(:dbl_upper)   # DECDHL top half
+    when "#4"; set_line_attrs(:dbl_lower)   # DECDHL bottom half
+    when "#5"; set_line_attrs(0)            # DECSWL single width
+    when "#6"; set_line_attrs(:dbl_single)  # DECDWL double width
     when "c"; reset            # RIS
     when "#8"; decaln
     when "(B"; @g[0] = DefaultCharset
