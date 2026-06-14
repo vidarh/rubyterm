@@ -289,17 +289,17 @@ class Term
 
   
   def wrap_if_needed
-    if @x >= width
+    if @x >= line_width
       if @wraparound
         @x = 0
         @y += 1
       else
-        @x = width-1
+        @x = line_width-1
       end
     elsif @x < 0
       if @wraparound
         @y -= 1
-        @x = width-1
+        @x = line_width-1
       else
         @x = 0
       end
@@ -377,7 +377,16 @@ class Term
   # DECOM is set (origin mode only affects cursor addressing).
   def region_top    = @buffer.scroll_start || 0
   def region_bottom = @buffer.scroll_end   || height - 1
-  def clampw(i) = i.clamp(0,width-1)
+  # Usable column count of the current line. Double-width/height lines show
+  # each cell twice as wide, so only width/2 columns fit; the cursor's last
+  # valid column is therefore line_width-1.
+  def line_width
+    case @buffer.lineattrs(@y)
+    when :dbl_upper, :dbl_lower, :dbl_single then width / 2
+    else width
+    end
+  end
+  def clampw(i) = i.clamp(0,line_width-1)
   def clamph(i) = i.clamp(origin,bottom)
 
   # IND - index: down one line; at the bottom margin scroll the region up.
@@ -628,8 +637,8 @@ class Term
       # Backspace. From the pending-wrap state (cursor parked past the last
       # column after printing there) BS clears the pending wrap and stays on
       # the last column, rather than stepping back two.
-      if    @x >= width then @x = width - 1
-      elsif @x > 0      then @x -= 1
+      if    @x >= line_width then @x = line_width - 1
+      elsif @x > 0           then @x -= 1
       end
     when 9
       if i = @tabs.index {|t| t > @x}
@@ -638,7 +647,7 @@ class Term
       else
         # No tab stop to the right (e.g. all stops cleared via TBC): HT
         # advances to the last column, per VT100.
-        @x = width - 1
+        @x = line_width - 1
       end
     when 10, 11
       linefeed
