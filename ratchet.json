@@ -40,6 +40,7 @@
   "vttest/ctrl-in-csi",
   "vttest/cursor-clamp",
   "vttest/decsc-decrc",
+  "vttest/del-ignored",
   "vttest/ind-at-region-bottom",
   "vttest/insert-mode",
   "vttest/nel-scroll",

@@ -527,7 +527,7 @@ class Term
     else
       wrap_if_needed
       scroll_if_needed
-      return delete if ch == 127
+      return if ch == 127   # DEL is ignored in the data stream
 
       # IRM (insert mode): shift the rest of the line right and repaint it,
       # then drop the new glyph into the gap.

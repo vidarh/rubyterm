@@ -45,6 +45,12 @@ CASES = {
   # "ABCXXXXX". CSI 4 l restores replace mode. (vttest VT102 "Insert Mode".)
   "insert-mode"     => "\e[2J\e[1;1HXXXXX\e[1;1H\e[4hABC\e[4l",
 
+  # --- DEL ------------------------------------------------------------
+  # DEL (0x7f) in the data stream is ignored - not rendered. It used to move
+  # back and write a literal 'B', corrupting e.g. the trailing '~' of each
+  # row in vttest's character-set tables.
+  "del-ignored"     => "\e[2J\e[1;1HAB~\x7F",
+
   # --- Cursor clamping at the margins ---------------------------------
   # CUF/CUB past the edges clamp at column 1 / last column; BS at col 1
   # does not move off the row.
