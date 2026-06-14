@@ -311,17 +311,21 @@ class Window
   
   def draw(x,y, c, fg, bg, lineattrs)
     case lineattrs
+    # On double-width/height lines each cell is twice as wide, so column N
+    # sits at pixel 2*N*char_w. The incoming x is the single-width pixel
+    # position (col*char_w); double it so a run that does not start at
+    # column 0 still lands in the right place.
     when :dbl_upper
       # FIXME: Clipping
-      fillrect(x,y,c.length*char_w*2,char_h*2,bg)
-      @skr_dblheight.render_str(@pic, fg, x, y, c)
+      fillrect(x*2,y,c.length*char_w*2,char_h*2,bg)
+      @skr_dblheight.render_str(@pic, fg, x*2, y, c)
     when :dbl_lower
       # FIXME: Clipping
-      fillrect(x,y,c.length*char_w*2,char_h*2,bg)
-      @skr_dblheight.render_str(@pic, fg, x, y-char_h, c)
+      fillrect(x*2,y,c.length*char_w*2,char_h*2,bg)
+      @skr_dblheight.render_str(@pic, fg, x*2, y-char_h, c)
     when :dbl_single
-      fillrect(x,y,c.length*char_w*2,char_h,bg)
-      @skr_dblwidth.render_str(@pic, fg, x, y, c)
+      fillrect(x*2,y,c.length*char_w*2,char_h,bg)
+      @skr_dblwidth.render_str(@pic, fg, x*2, y, c)
     else
       fillrect(x,y,c.length*char_w,char_h,bg)
       c.rstrip!
