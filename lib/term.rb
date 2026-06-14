@@ -73,9 +73,11 @@ class Term
     @origin_mode = false
 
     # LNM - Line Feed / New Line Mode - See https://vt100.net/docs/vt100-ug/chapter3.html
-    # Whether LF (0x0A) will imply only vertical movement, or will also
-    # reset x position to 0 (default).
-    @lnm = true
+    # LNM (line feed/new line mode). When reset (the VT100 default), LF/VT/FF
+    # only move down; when set, they also return to column 0. The pty's
+    # ONLCR already turns a program's "\n" into "\r\n", so off is both
+    # correct and what tmux/xterm do.
+    @lnm = false
 
     # :x10, :v200, :v200_highlight, :btn_event, :any_event
     # FIXME: Only :btn_event_mouse supported so far
@@ -456,6 +458,14 @@ class Term
       case args[0].to_i
       when 0 then @tabs.delete(@x)
       when 3 then @tabs = []
+      end
+    when "h", "l"
+      # Standard (non-DEC-private) modes - SM/RM. CSI 20 h/l is LNM.
+      set = s[-1] == "h"
+      args.each do |code|
+        case code
+        when 20 then @lnm = set
+        end
       end
     when "m"; set_modes(args.empty? ? [0] : args)
     when "n"

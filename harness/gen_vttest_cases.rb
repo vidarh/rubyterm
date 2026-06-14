@@ -59,6 +59,16 @@ CASES = {
   # A CR inside the CSI returns to column 0 mid-sequence; the CUP then still
   # completes. 'Y' lands at the CUP target, 'Z' (after) at column 1.
   "cr-in-csi"       => "abcdef\e[1\r;3HY",
+  # vttest "cursor-control characters inside ESC sequences": the four lines
+  # must render identically ("A B C D E F G H I"). Each uses a different C0
+  # control embedded in a CSI - BS, CR, and VT. The VT line first resets LNM
+  # (CSI 20 l) so VT only moves down (no carriage return), letting the CSI A
+  # (cursor up) cancel it; this needs LNM default-off and standard CSI 20 l.
+  "csi-embedded-controls" =>
+    "\e[2J\e[1;1HA B C D E F G H I" \
+    "\e[3;1HA\e[2\bCB\e[2\bCC\e[2\bCD\e[2\bCE\e[2\bCF\e[2\bCG\e[2\bCH\e[2\bCI\e[2\bC" \
+    "\e[5;1HA \e[\r2CB\e[\r4CC\e[\r6CD\e[\r8CE\e[\r10CF\e[\r12CG\e[\r14CH\e[\r16CI" \
+    "\e[7;1H\e[20lA \e[1\vAB \e[1\vAC \e[1\vAD \e[1\vAE \e[1\vAF \e[1\vAG \e[1\vAH \e[1\vAI \e[1\vA",
 
   # --- DECSC / DECRC ---------------------------------------------------
   # Save cursor + attributes, move and change them, then restore: the
