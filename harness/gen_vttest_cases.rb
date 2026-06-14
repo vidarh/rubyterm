@@ -32,6 +32,12 @@ CASES = {
   # --- Autowrap (DECAWM) ----------------------------------------------
   # With autowrap on, text past the right margin wraps to the next row.
   "autowrap-edge"   => "\e[?7h\e[1;79HXYZ\e[2;1HQ",
+  # Backspace from the pending-wrap state (after printing in the last
+  # column, the cursor parks past it) clears the pending wrap and stays on
+  # the last column rather than stepping back two: 'B' lands in the last
+  # column, BS returns to it, the space overwrites 'B', and 'b' then wraps
+  # to the next row. (From vttest's autowrap test.)
+  "bs-pending-wrap" => "\e[?7h\e[1;80HB\b b",
 
   # --- Cursor clamping at the margins ---------------------------------
   # CUF/CUB past the edges clamp at column 1 / last column; BS at col 1

@@ -572,8 +572,11 @@ class Term
     when 1,2;
     when 7; p :bell
     when 8;
-      if    @x >= width then @x -= 2
-      elsif @x > 0 then @x -= 1
+      # Backspace. From the pending-wrap state (cursor parked past the last
+      # column after printing there) BS clears the pending wrap and stays on
+      # the last column, rather than stepping back two.
+      if    @x >= width then @x = width - 1
+      elsif @x > 0      then @x -= 1
       end
     when 9
       if i = @tabs.index {|t| t > @x}

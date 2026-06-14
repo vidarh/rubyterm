@@ -34,6 +34,7 @@
   "synthetic/text-wrap",
   "vttest/autowrap-edge",
   "vttest/bs-at-col1",
+  "vttest/bs-pending-wrap",
   "vttest/cr-in-csi",
   "vttest/csi-embedded-controls",
   "vttest/ctrl-in-csi",
