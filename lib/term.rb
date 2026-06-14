@@ -133,6 +133,26 @@ class Term
     @adapter.clear unless @adapter.scrollback_mode
   end
 
+  # RIS - Reset to Initial State (ESC c). Full reset: restore margins,
+  # modes, charsets, tab stops and attributes to their defaults, home the
+  # cursor and clear the screen.
+  def reset
+    @x = @y = 0
+    @tabs = 40.times.map {|i| i * 8}
+    @fg = FG; @bg = BG; @mode = 0
+    @wraparound  = true
+    @cursor      = true
+    @origin_mode = false
+    @lnm = false
+    @irm = false
+    @mouse_mode = nil
+    @mouse_reporting = nil
+    @gl = 0; @gr = nil
+    @g  = [DefaultCharset, nil, nil, nil]
+    @saved = nil
+    clear_screen   # also resets the scroll region and clears
+  end
+
   # ED - Erase In Display - ESC [ Ps J
   def erase_in_display(ps = 0)
     case ps.to_i
@@ -562,6 +582,7 @@ class Term
     when "#4"; @buffer.set_lineattrs(@y, :dbl_lower) # FIXME: Flags
     when "#5"; @buffer.set_lineattrs(@y, 0) # FIXME: Flags
     when "#6"; @buffer.set_lineattrs(@y, :dbl_single) # FIXME: Flags
+    when "c"; reset            # RIS
     when "#8"; decaln
     when "(B"; @g[0] = DefaultCharset
     when ")B"; @g[1] = DefaultCharset

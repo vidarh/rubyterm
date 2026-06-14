@@ -45,6 +45,8 @@
   "vttest/insert-mode",
   "vttest/nel-scroll",
   "vttest/ri-at-region-top",
+  "vttest/ris-reset",
+  "vttest/ris-tabs",
   "vttest/tab-clear-all",
   "vttest/tab-set-clear"
 ]

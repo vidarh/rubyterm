@@ -45,6 +45,15 @@ CASES = {
   # "ABCXXXXX". CSI 4 l restores replace mode. (vttest VT102 "Insert Mode".)
   "insert-mode"     => "\e[2J\e[1;1HXXXXX\e[1;1H\e[4hABC\e[4l",
 
+  # --- Reset (RIS) ----------------------------------------------------
+  # RIS (ESC c) is a full reset: clears the screen, homes the cursor, and
+  # restores the scroll region, origin mode, charsets and attributes. After
+  # it, 'ABC' lands at the home position, not at the old origin-relative one.
+  "ris-reset"       => "\e[3;10r\e[?6h\e[5;5HX\ecABC",
+  # RIS also restores the default tab stops (every 8) after they were
+  # cleared with TBC 3, so the TAB advances to column 8.
+  "ris-tabs"        => "\e[3g\ec\tA",
+
   # --- DEL ------------------------------------------------------------
   # DEL (0x7f) in the data stream is ignored - not rendered. It used to move
   # back and write a literal 'B', corrupting e.g. the trailing '~' of each
