@@ -578,11 +578,16 @@ rewrite. Stop points are marked — partial adoption still pays off.
   (`@buffer.set_columns`/`@buffer.scrollback_mode`); the redundant
   `@adapter.clear` and the `char_w`/`char_h` delegation (only used for an
   initial size guess) were removed. Ratchet + tests green.
-- **Still here:** the `CURSOR` pixel constant and cursor drawing. Making
-  the cursor a first-class buffer **overlay** (so every backend renders it
-  and the AnsiBackend's CURSOR-cell recognition goes away) is entangled
-  with the harness's cursor-as-cell markers model, so it's its own careful
-  step. DECCOLM policy (font rescale on `reset`) is a separate TODO.
+- **Cursor overlay (done).** The `CURSOR` pixel constant and the cursor
+  drawing moved out of `Term` into `TrackChanges` (`#draw_cursor`/
+  `#clear_cursor`): the interpreter now just *reports* the cursor position
+  and visibility, and the buffer renders the overlay. Harness-safe because
+  the framebuffer output is byte-identical (the cursor is still a
+  CURSOR-background cell, just painted from the buffer) - ratchet + tests
+  green. `Term` now carries no pixel/colour constants and no rendering at
+  all. (The AnsiBackend still recognises the CURSOR-background cell; making
+  the cursor style a per-backend choice is a possible later refinement.)
+  DECCOLM policy (font rescale on `reset`) remains a separate TODO.
 
 ### Phase 5 — Write `AnsiBackend` (done, ahead of Phase 3)
 **Done** (`lib/ansibackend.rb`), and deliberately landed *before* the

@@ -8,14 +8,10 @@ require_relative 'charsets'
 # render backend). The same interpreter therefore drives a terminal that
 # renders to an X11 window or to a terminal (AnsiBackend), or for a
 # multiplexer / TUI library, depending only on the backend behind the
-# buffer.
-#
-# (The `CURSOR` overlay constant below is the last display-ish detail still
-# here; making the cursor a first-class buffer overlay is the remaining
-# step - see docs/architecture-review.md Phase 4.)
+# buffer. It carries no pixel/colour constants and no rendering: even the
+# cursor is just a position it reports (#draw_cursor) for the buffer to
+# render as an overlay.
 class Term
-  CURSOR = 0xff00ff
-
   attr_accessor :x, :y, :wraparound, :cursor, :origin_mode,
     :mouse_mode, :mouse_reporting, :tabs, :esc, :mode, :mouse_buttons
 
@@ -50,8 +46,6 @@ class Term
 
     @wraparound = true
 
-    # Used to save the cursor position
-    @cursor_pos = nil
     # Show cursor?
     @cursor = true
 
@@ -282,30 +276,15 @@ class Term
     end
   end
 
-  def clear_cursor
-    # Don't touch the screen while scrolled back; the live cursor must not
-    # paint over the scrolled-back view.
-    return if @buffer.scrollback_mode
-    return if !@cursor_pos
-    @buffer.redraw(*@cursor_pos)
-    @cursor_pos = nil
-  end
+  # The cursor is a render-time overlay, not interpreter state: the
+  # interpreter just reports where the cursor is (and whether it's shown);
+  # the buffer/backend renders it. (See docs/architecture-review.md Phase 4.)
+  def clear_cursor = @buffer.clear_cursor
 
   def draw_cursor
-    return if @buffer.scrollback_mode
-    # If the old cursor is still on screen,
-    # we clear it. Note that this does not take into account
-    # scrolling at present, so you can't *rely* on it.
-    clear_cursor
-
-    x,y=@x,@y
-    return if !@cursor
-    # FIXME: Is this needed?
-    if x >= width
-      y+=1
-    end
-    @buffer.redraw_with(x,y, bg: CURSOR)
-    @cursor_pos = [x,y]
+    x, y = @x, @y
+    y += 1 if x >= width   # pending-wrap: the cursor shows on the next row
+    @buffer.draw_cursor(x, y, @cursor)
   end
 
   # FIXME: Redrawing full spans would be better.

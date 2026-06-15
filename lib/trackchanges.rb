@@ -1,9 +1,15 @@
 
 # FIXME: Roll this into the actual buffer.
 class TrackChanges
+  # The cursor is rendered as an overlay - a cell repainted with this
+  # background. The AnsiBackend recognises it and turns it into a real
+  # terminal cursor; the X11 backend paints the block.
+  CURSOR = 0xff00ff
+
   def initialize buffer, adapter
     @buffer = buffer
     @adapter = adapter
+    @cursor_pos = nil   # where the cursor overlay was last painted
     # When true, #set only mutates the buffer; rendering is deferred to the
     # next #draw_flush, which walks the buffer's damage (generation) instead
     # of drawing eagerly per cell. Default off (the proven eager path) while
@@ -128,6 +134,24 @@ class TrackChanges
   end
 
   def redraw(x,y) = draw_buffered(x,y, @buffer.get(x,y), true)
+
+  # Render the cursor overlay at (x,y) if +visible+, after restoring the
+  # cell under its previous position. A no-op while scrolled back, so the
+  # live cursor doesn't paint over the frozen history view.
+  def draw_cursor(x, y, visible)
+    return if @adapter.scrollback_mode
+    clear_cursor
+    return unless visible
+    redraw_with(x, y, bg: CURSOR)
+    @cursor_pos = [x, y]
+  end
+
+  def clear_cursor
+    return if @adapter.scrollback_mode
+    return unless @cursor_pos
+    redraw(*@cursor_pos)
+    @cursor_pos = nil
+  end
 
   def redraw_all(scrollback_offset = 0)
     @buffer.each_character(scrollback_offset) { |*args| draw_buffered(*args, true) }
