@@ -245,7 +245,10 @@ class TermBuffer
     ch = ch.ord
     if flags.anybits?(BLINK | RAPID_BLINK)
       @blinky << [x, y]
-    else
+    elsif !@blinky.empty?
+      # Only bother removing (and allocating the [x,y] key) when something
+      # actually blinks. The overwhelmingly common case is no blinking cells
+      # at all, so this skips a per-character array alloc + Set#delete.
       @blinky.delete([x, y])
     end
     ensure_row(y)
