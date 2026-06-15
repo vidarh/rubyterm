@@ -5,3 +5,10 @@ PALETTE_BASIC = [
 PALETTE256= PALETTE_BASIC +
   [0,0x5f, 0x87, 0xaf, 0xd7, 0xff].repeated_permutation(3).sort.map{|ary| (ary[0]<<16)+(ary[1]<<8)+ary[2]}+
   (8..244).step(10).map{|n| (n<<16)+(n<<8)+n}
+
+# Default foreground/background, stored as basic-palette indices (strings;
+# Term resolves them to colours). Defined here so the library is
+# self-contained; guarded so callers that pre-define them (tests, harness)
+# don't clash.
+FG = "7" unless defined?(FG)
+BG = "0" unless defined?(BG)

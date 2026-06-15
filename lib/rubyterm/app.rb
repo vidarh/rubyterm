@@ -1,36 +1,11 @@
-
-require 'pty'
-require 'io/console'
-
-require_relative 'bundle/bundler/setup'
-#$: << "/home/vidarh/.gem/ruby/3.2.2/gems/skrift-0.1.0/lib"
-
-require_relative 'lib/palette'
-require_relative 'lib/termbuffer'
-require_relative 'lib/keymap'
-require_relative 'lib/window'
-require_relative 'lib/charsets'
-require_relative 'lib/utf8decoder'
-require_relative 'lib/controller'
-
-require 'X11'
-require 'skrift'
-require 'skrift/x11'
-require 'citrus/file'
-require 'toml-rb'
-
-#require 'pry'
-
-$> = $stderr
-
-require_relative 'lib/windowadapter'
-require_relative 'lib/trackchanges'
-require_relative 'lib/term'
-
-BG="0"
-FG="7"
-
-
+# The X11 terminal application: owns the X window, the pty controller, the
+# input-processing thread and the blink/flush timers, and wires the
+# interpreter (Term) + damage tracker (TrackChanges) + buffer to the X11
+# backend (Window via WindowAdapter). The reusable terminal engine lives in
+# the other lib/ files; this class is the executable front end (bin/rubyterm).
+#
+# Component classes and the X11/skrift/toml dependencies are loaded by
+# lib/rubyterm.rb, which requires this file last.
 class RubyTerm
   TOPMOST= 0
   LEFTMOST=0
@@ -57,8 +32,6 @@ class RubyTerm
     
   def initialize(args)
     initconfig
-
-    pp(:config,@config)
 
     @queue = Queue.new
     # Coalesce redraw-causing events (resize/expose): a drag fires a
@@ -145,7 +118,6 @@ class RubyTerm
     @pixelw||=0
     @pixelh||=0
     should_redraw = w >= @pixelw || h >= @pixelh
-    p [:should_redraw] if should_redraw
     @pixelw=w
     @pixelh=h
     @window.on_resize(w,h)
@@ -470,11 +442,8 @@ class RubyTerm
   end
   
   def handle_mouse(pkt)
-    p pkt
-    p [@term.mouse_mode,@term.mouse_reporting]
     @term.mouse_buttons = button = pkt.detail > 0 ? pkt.detail : @term.mouse_buttons
     release = pkt.is_a?(X11::Form::ButtonRelease)
-    p [pkt.class, pkt.is_a?(X11::Form::ButtonRelease)]
     x = pkt.event_x / char_w
     y = pkt.event_y / char_h
     # Holding Shift forces a local text selection even when the
@@ -503,7 +472,6 @@ class RubyTerm
         render_selection
       end
 
-      p :HERE, release
       if release
         @released = true
         if @select_startpos != @select_endpos
@@ -546,7 +514,7 @@ class RubyTerm
       # would shrink the terminal to the strip size).
       request_redraw
     else
-      p pkt
+      # Other X events (MapNotify, etc.) are not acted on.
     end
   end
 
@@ -562,8 +530,6 @@ class RubyTerm
 
 
   def run(args)
-    puts "RUNNING; args: #{args.inspect}"
-
     @controller = Controller.new(self, @config)
     @controller.run(*args)
     @term.responder = @controller
@@ -612,5 +578,3 @@ class RubyTerm
     threads.each(&:join)
   end
 end
-
-RubyTerm.new(ARGV).run(ARGV) if $0 == __FILE__

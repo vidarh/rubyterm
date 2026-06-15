@@ -13,7 +13,7 @@
 # The production code carries no debug facilities; everything here is
 # plugged in via Module#prepend from the outside.
 
-require_relative '../termtest'
+require_relative '../lib/rubyterm'   # loads the engine + X11 front end + RubyTerm
 
 require_relative 'lib/patches'
 require_relative 'lib/statedump'

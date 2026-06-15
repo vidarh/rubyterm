@@ -1,7 +1,16 @@
 PATH
+  remote: .
+  specs:
+    rubyterm (0.1.0)
+      pure-x11
+      skrift
+      skrift-x11
+      toml-rb
+
+PATH
   remote: /home/vidarh/Desktop/Projects/skrift-x11
   specs:
-    skrift-x11 (0.2.1)
+    skrift-x11 (0.2.2)
       pure-x11
       skrift
 
@@ -25,10 +34,9 @@ PLATFORMS
   x86_64-linux
 
 DEPENDENCIES
-  pure-x11
+  rubyterm!
   skrift!
   skrift-x11!
-  toml-rb
 
 BUNDLED WITH
    2.6.3

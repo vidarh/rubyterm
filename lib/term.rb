@@ -1,3 +1,4 @@
+require_relative 'palette'      # PALETTE_BASIC, FG, BG
 require_relative 'escapeparser'
 require_relative 'utf8decoder'
 require_relative 'charsets'
