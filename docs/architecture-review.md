@@ -568,15 +568,25 @@ rewrite. Stop points are marked — partial adoption still pays off.
 - `Term` now constructs with only a `Screen`; the harness can test the
   interpreter with **zero** backend.
 
-### Phase 5 — Write `AnsiBackend` (the highest-leverage deliverable)
-- Port `String#to_str` + `Attr#transition_to` + the row-diff into an
-  `AnsiBackend` consuming `Screen` damage. rterm can now render to a
-  terminal.
-- Add a harness invariant: `Screen → AnsiBackend → (feed back through
-  Term) → Screen'`, assert `Screen == Screen'`. A strong new round-trip
-  oracle, and the first proof the backend seam holds.
-> **Value if you stop here:** you have the Emacs-style text backend you
-> wanted, with a correctness oracle.
+### Phase 5 — Write `AnsiBackend` (done, ahead of Phase 3)
+**Done** (`lib/ansibackend.rb`), and deliberately landed *before* the
+damage-driven flush: the existing run-batcher already emits a usable
+damage stream (changed runs + scroll/clear ops), so `AnsiBackend` is a
+drop-in for `WindowAdapter` that turns those same calls into minimal
+escapes (CUP + SGR-delta + text, scroll-region escapes, EL). The same
+`Term` core now renders to a terminal or an X11 window depending only on
+the backend.
+- Validated by the metamorphic round-trip oracle (`test_ansibackend.rb`):
+  `Term → AnsiBackend → escapes → Term' → identical screen`, no external
+  oracle. Plus a terminal-in-a-terminal demo
+  (`examples/terminal_in_terminal.rb`) confirmed live in tmux, and
+  **`re` (a full TUI editor) runs correctly inside it**.
+- This round-trip oracle is now the second deterministic check the
+  *damage-driven flush* (remaining Phase 3) can be built against: assert
+  the damage-driven escapes stay identical to the eager ones before
+  flipping the live `set` path.
+> **The backend seam is proven real.** The Emacs-style economic text
+> backend the project set out to build exists and renders real apps.
 
 ### Phase 6 — Extract Host/App seam; migrate `re`
 - Pull X11 + pty + threads + selection/scrollback UI out of the core into
