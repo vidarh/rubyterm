@@ -120,6 +120,7 @@ class Term
     @x = @y = 0
     @tabs = 40.times.map {|i| i * 8}
     @fg = FG; @bg = BG; @mode = 0
+    invalidate_colours
     @wraparound  = true
     @cursor      = true
     @origin_mode = false
@@ -220,8 +221,18 @@ class Term
   end
 
 
-  def fg = @fg.is_a?(String) ? PALETTE_BASIC[@fg.to_i + (@mode.allbits?(BOLD) ? 8:0)] : @fg
-  def bg = @bg.is_a?(String) ? PALETTE_BASIC[@bg.to_i] : @bg
+  # Resolved fg/bg are recomputed only when an SGR (or reset) changes
+  # @fg/@bg/@mode - not per character. putchar resolves the colour for every
+  # printable glyph, so doing the String/palette dance each time showed up
+  # in the profile; memoise and invalidate via #invalidate_colours.
+  def fg
+    @fg_resolved ||=
+      @fg.is_a?(String) ? PALETTE_BASIC[@fg.to_i + (@mode.allbits?(BOLD) ? 8:0)] : @fg
+  end
+  def bg
+    @bg_resolved ||= @bg.is_a?(String) ? PALETTE_BASIC[@bg.to_i] : @bg
+  end
+  def invalidate_colours; @fg_resolved = @bg_resolved = nil; end
     
   def set_modes(codes)
     while c = codes.shift
@@ -255,6 +266,8 @@ class Term
       else return unhandled(:sgr, c)
       end
     end
+  ensure
+    invalidate_colours
   end
 
   
