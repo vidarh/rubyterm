@@ -706,6 +706,29 @@ both axes:
 > (per-byte parser dispatch, UTF-8 decode, `set` packing). That is the
 > natural continuation of this axis.
 
+> **Progress — interpreter hot path (general, non-hacky wins).** Profiled
+> `Term#feed` on a plain cat-style flood (stackprof, null sink) and landed
+> three clean optimisations, each gated by the bench + ratchet:
+>   1. `TermBuffer#set` no longer allocates a `[x,y]` and does a Set/Hash
+>      delete per character on the common non-blinking path (guarded on a
+>      non-empty blink set).
+>   2. `Term` memoises the resolved fg/bg colours instead of re-doing the
+>      String/palette resolution per glyph (invalidated on SGR/reset).
+>   3. `UTF8Decoder#each_codepoint` yields Integer codepoints (validity
+>      checked once per chunk; `String#each_codepoint` on the common valid
+>      path) so `feed` allocates no per-character String — the single
+>      biggest allocation source.
+>
+> Cumulative on the interpret+draw-batch path (4 MB plain, defer mode):
+> **throughput +33%** (0.226 → 0.30 MB/s), **alloc/KB −84%** (plain
+> 2426 → 387), **GC time −65%**. Because the post-Ctrl-C backlog is
+> OS-bounded, this throughput gain is also a ~proportional time-to-stop
+> gain. The "no-escape fast path + cheaper jump-scroll for the accidental
+> `cat`" trick is deliberately left for later — general speedups first.
+> Remaining profile heads are the necessary draw-batch machinery
+> (`draw_buffered`/`each_damaged`) and per-char dimension lookups
+> (`region_bottom`/`line_width`), lower-yield from here.
+
 **Sequencing note.** Phases 2–4 deliver rterm value without touching
 `re`. Phase 5 delivers the text backend. Phase 6 is the `re` payoff.
 Phase 8's optimisations apply whether or not `re` migrated. The benchmark
