@@ -52,6 +52,33 @@ class TestTermBuffer < Minitest::Test
     assert_equal "TOP\nBOT", text_between(0, -1, 2, 0)
   end
 
+  def test_scrollback_round_trips_full_cell_attributes
+    # Scrollback is stored in a packed form; reading it back must preserve
+    # ch, fg, bg and flags exactly (not just the character).
+    @buf.set(0, 0, "X", 0x123456, 0xabcdef, BOLD | UNDERLINE)
+    @buf.set(1, 0, "Y") # default attrs
+    @buf.scroll_up
+
+    x = @buf.get(0, -1)
+    assert_equal ["X".ord, 0x123456, 0xabcdef, BOLD | UNDERLINE], x
+    y = @buf.get(1, -1)
+    assert_equal ["Y".ord, 0, 0, 0], y
+    assert_nil @buf.get(5, -1), "unset cell in a scrolled line reads nil"
+  end
+
+  def test_each_character_yields_scrollback_then_live
+    # With a scrollback offset, each_character renders scrolled-off lines
+    # at the top, then the live buffer below.
+    write_row(0, "OLD")
+    @buf.scroll_up
+    write_row(0, "NEW")
+
+    rows = Hash.new { |h, k| h[k] = {} }
+    @buf.each_character(1) { |x, y, cell| rows[y][x] = cell[0].chr }
+    assert_equal "OLD", (0..2).map { |x| rows[0][x] }.join, "scrollback row at top"
+    assert_equal "NEW", (0..2).map { |x| rows[1][x] }.join, "live row below it"
+  end
+
   def test_line_at_does_not_autovivify
     # line_at must be non-mutating: reading a non-existent row must not
     # grow the buffer (unlike #[], which auto-vivifies).

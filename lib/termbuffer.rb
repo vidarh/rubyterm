@@ -41,14 +41,44 @@ class ScrBuf
     @scrbuf[i] = line
   end
 
+  # Scrollback lines are stored compactly as a packed pair
+  # [chars, styles] of parallel arrays of immediates, instead of an array
+  # of [ch,fg,bg,flags] cell Arrays. Scrollback is unbounded, so
+  # object-per-cell storage dominated retained-object count (and thus GC
+  # mark time - see docs/bench-baseline.md); this is ~40x fewer objects
+  # per scrolled-off line. fg/bg are 24-bit and flags < 2^12, so a cell's
+  # attributes pack into a single fixnum.
+  def pack_line(row)
+    return [[], []] if !row
+    n = row.length
+    n -= 1 while n > 0 && row[n - 1].nil?   # drop trailing blanks
+    chars  = Array.new(n)
+    styles = Array.new(n)
+    n.times do |x|
+      c = row[x] or next
+      chars[x]  = c[0]
+      styles[x] = c[1].to_i | (c[2].to_i << 24) | (c[3].to_i << 48)
+    end
+    [chars, styles]
+  end
+
+  def unpack_line(packed)
+    chars, styles = packed
+    chars.map.with_index do |ch, x|
+      next nil if !ch
+      s = styles[x]
+      [ch, s & 0xFFFFFF, (s >> 24) & 0xFFFFFF, s >> 48]
+    end
+  end
+
   # Read a line by row index, mapping negative rows into the scrollback
-  # buffer (row -1 is the most recent scrolled-off line). Unlike #[] this
-  # is non-mutating and never auto-vivifies, so it is safe for read-only
-  # traversal (e.g. selection extraction across scrollback).
+  # buffer (row -1 is the most recent scrolled-off line), unpacking the
+  # compact form. Unlike #[] this is non-mutating and never auto-vivifies,
+  # so it is safe for read-only traversal (e.g. selection extraction).
   def line_at(y)
     if y < 0 && !@scrollback_buffer.empty?
       scrollback_index = @scrollback_buffer.size + y
-      return scrollback_index >= 0 ? @scrollback_buffer[scrollback_index] : nil
+      return scrollback_index >= 0 ? unpack_line(@scrollback_buffer[scrollback_index]) : nil
     end
     @scrbuf[y]
   end
@@ -87,15 +117,13 @@ class ScrBuf
         # Only show last 'offset' lines from scrollback
         scrollback_lines = @scrollback_buffer[-offset..-1] || []
         
-        # Render scrollback lines at the top of the screen
-        scrollback_lines.each_with_index do |line, idx|
-          if line
-            line.each_with_index do |cell, x|
-              if cell
-                # Render at position from top of screen
-                yield x, idx, cell
-              end
-            end
+        # Render scrollback lines (unpacked from the compact form) at the
+        # top of the screen.
+        scrollback_lines.each_with_index do |packed, idx|
+          line = packed && unpack_line(packed)
+          next if !line
+          line.each_with_index do |cell, x|
+            yield x, idx, cell if cell
           end
         end
         
@@ -179,20 +207,20 @@ class TermBuffer
     @scrbuf.resize(w,h)
   end
   
+  # Negative rows route through ScrBuf#line_at, which maps them into the
+  # scrollback buffer and unpacks the compact form. (The old inline
+  # mapping here referenced a nonexistent @scrollback_buffer ivar and
+  # would have raised on any negative y - it was dead because get is only
+  # ever called with y >= 0.)
   def get(x,y)
-    if y < 0 && !@scrollback_buffer.empty?
-      # Convert negative index to scrollback buffer index
-      scrollback_index = @scrollback_buffer.size + y
-      return scrollback_index >= 0 ? (@scrollback_buffer[scrollback_index] || [])[x] : nil
+    if y < 0
+      row = @scrbuf.line_at(y)
+      return row && row[x]
     end
     (@scrbuf[y]||[])[x]
   end
   def getline(y)
-    if y < 0 && !@scrbuf.scrollback_buffer.empty?
-      # Convert negative index to scrollback buffer index
-      scrollback_index = @scrbuf.scrollback_buffer.size + y
-      return scrollback_index >= 0 ? @scrbuf.scrollback_buffer[scrollback_index] : nil
-    end
+    return @scrbuf.line_at(y) if y < 0
     @scrbuf[y]
   end
 
@@ -228,21 +256,13 @@ class TermBuffer
   end
 
   def scroll_up
-    # Save the line to scrollback buffer before deleting
+    # Save the line to scrollback (in the compact packed form) before
+    # deleting it. Always store, even if empty, for consistent scrollback
+    # navigation. pack_line builds fresh arrays, so it also snapshots
+    # (no aliasing with the live row that delete_line removes).
     y = @scroll_start.to_i
-    scrollback_line = @scrbuf[y]
-    
-    # Always store the line in scrollback, even if it seems empty -
-    # this ensures consistent scrollback navigation
-    line_to_save = scrollback_line ? scrollback_line.dup : []
-    @scrbuf.scrollback_buffer.push(line_to_save)
+    @scrbuf.scrollback_buffer.push(@scrbuf.pack_line(@scrbuf[y]))
     @scrbuf.scrollback_lineattrs.push(@scrbuf.lineattrs(y))
-    
-    # Add a debug marker to see what's being stored
-    if ENV["DEBUG"]
-      puts "Saving scrollback line: #{line_to_save.inspect}"
-    end
-    
     delete_line(y)
   end
 

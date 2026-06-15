@@ -494,6 +494,28 @@ rewrite. Stop points are marked — partial adoption still pays off.
 > and performance is measured (a prerequisite for everything after).
 
 ### Phase 2 — Collapse the buffer trio into one `Screen` (the big step)
+
+> **Sequencing note (discovered during execution).** The harness's
+> markers check tracks per-cell generations by **cell-array object
+> identity** (`patches.rb` `compare_by_identity`), relying on cells being
+> persistent objects that physically move through the buffer. Columnar
+> storage of the **live grid** removes those objects, so it *forces a
+> redesign of the harness gen-tracking* — which is really the damage-model
+> work of Phase 3. The gen-tracking only ever covers the live screen,
+> never scrollback. So Phase 2 splits:
+>
+> - **2a — scrollback compaction (done).** Scrollback (unbounded, the
+>   dominant *retained-object* cost) now stores packed parallel arrays
+>   instead of object-per-cell. Safe: it never touches the live grid or
+>   gen-tracking. Result vs baseline: live objects retained −83% (5.8×),
+>   GC time −50%, alloc/KB flat. Ratchet + tests green.
+> - **2b — live-grid columnar (deferred, merges with Phase 3).** The
+>   alloc/KB win (~6500 → ~650) needs the live grid columnar, which needs
+>   the gen-tracking redesigned to not key on cell identity. Do it
+>   together with making damage first-class, where a native per-cell
+>   generation/version becomes the legitimate damage primitive the
+>   markers check reads (not a debug hook).
+
 - Merge `TermBuffer` + `ScrBuf` + the *model-mutation* half of
   `TrackChanges` into a single `Screen` backed by columnar parallel
   arrays of packed immediates (§8) — not an array-of-cell-objects, and
