@@ -1,3 +1,19 @@
+GIT
+  remote: https://github.com/vidarh/skrift-x11.git
+  revision: e68c0ab058259b676559ec3476daa5789c547995
+  branch: master
+  specs:
+    skrift-x11 (0.2.2)
+      pure-x11
+      skrift
+
+GIT
+  remote: https://github.com/vidarh/skrift.git
+  revision: 8f732768eb1fe61a900af48c17579d65058331ab
+  branch: master
+  specs:
+    skrift (0.2.0)
+
 PATH
   remote: .
   specs:
@@ -6,18 +22,6 @@ PATH
       skrift
       skrift-x11
       toml-rb
-
-PATH
-  remote: /home/vidarh/Desktop/Projects/skrift-x11
-  specs:
-    skrift-x11 (0.2.2)
-      pure-x11
-      skrift
-
-PATH
-  remote: /home/vidarh/Desktop/Projects/skrift
-  specs:
-    skrift (0.2.0)
 
 GEM
   remote: https://rubygems.org/
