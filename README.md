@@ -1,131 +1,144 @@
+# rubyterm
 
-# Ruby Term
+A terminal emulator written **entirely in Ruby** — including a pure-Ruby
+X11 client to talk to the X server. There is no C extension and no libvte;
+the escape-sequence interpreter, the screen buffer, the rendering and the
+X11 protocol handling are all Ruby.
 
-This is a *very early*, *very rough* Ruby terminal application that uses
-a pure-Ruby X11 client to talk to an X server. The entire terminal is
-pure Ruby.
+It is still rough and opinionated, but it now runs as an installable gem
+with a `rubyterm` executable, renders with a damage-driven pipeline
+(scrollback, text selection/copy, truecolor and UTF-8 all work), and is
+split into a reusable terminal *engine* that can be driven without X11 at
+all.
 
-It will change a lot when I get time...
+> **You probably don't want to depend on this yet.** Escape-code coverage
+> is partial (VT100/VT102 plus a useful chunk of xterm), font handling is
+> basic, and the keymap is limited. Full-screen apps mostly work; some will
+> still misbehave. I have specific ideas about direction, so if you'd like
+> to contribute, **talk to me first** (vidar@hokstad.com) or fork — I won't
+> promise to merge changes we haven't discussed.
 
-It will currently fail to run most full-screen applications, as only a very
-small subset of escape codes are handled properly (enough to run my own
-personal editor, barely). Localisation is a mess. Font-handling is near
-non-existent. Keymap handling is very limited.
+## Architecture
 
-In general: **You probably don't want to use this.**
+The code is deliberately small and split along clean seams so the pieces
+are independently usable and testable:
 
-If you insist on playing with it anyway, I do welcome thoughtful modifications,
-but I have very specific ideas for the direction I want to take it, so
-either talk to me first (e-mail: vidar@hokstad.com) or fork it. Or both. I
-will not guarantee I'll merge in changes unless we've spoken about it first.
+- **Engine** — the escape interpreter (`Term`), the damage tracker
+  (`TrackChanges`), the columnar screen buffer (`TermBuffer`) and the
+  escape/UTF-8 parsers. No pixels, no X11; drivable headlessly.
+- **Backends** — anything implementing the small drawing interface:
+  - `Window` — the pure-Ruby X11 backend (the real terminal);
+  - `AnsiBackend` — re-emits to an ANSI/escape stream (run a terminal
+    inside another terminal; see `examples/terminal_in_terminal.rb`);
+  - `BitmapWindow` — rasterises glyphs with skrift into an in-memory RGB
+    buffer (headless rendering / visual testing, PNG output).
+- **Application** — `RubyTerm` (in `lib/rubyterm/app.rb`), which owns the
+  X window, the pty controller and the input/blink/flush threads and wires
+  the engine to the X11 backend. `bin/rubyterm` runs it.
 
-Some thoughts on where I want to take this:
+Rendering is **damage-driven**: writing a cell only mutates the buffer and
+bumps a per-cell generation; a flush walks the damage and redraws just the
+changed cells. A flood of output (an accidental `cat` of a large file) is
+*jump-scrolled* — interpreted across many chunks and painted once.
 
-* Decouple the interpretation of escape sequences and updates of the terminal
-  buffer entirely from both the pty handling and the X11 interface, and make
-  it a separate gem.
-* Allow Ruby applications to instantiate a "terminal window" with an IO object
-  as the interface without actually running in a terminal (I want to use it to
-  run my own editor in), while being able to do **basic** other X stuff.
-* Make the terminal itself complete enough to run most Linux/Unix command line
-  tools - so that means a fairly complete unicode enabled xterm/vt100 terminal.
-* KEEP THE CODE SMALL, but understandable. You might spot hints at golfing in
-  the current code. I will value terseness, but only as long as it helps
-  preserve readability.
+For the full picture and the rationale behind the layering, see:
 
-## Done
-* Moved to a pure-Ruby direct implementation of a small subset of the
-  X Protocol.
+- [`docs/architecture-review.md`](docs/architecture-review.md) — the
+  architecture critique, the phased refactoring plan, and the Ruby
+  performance notes (with measured results).
+- [`docs/seams.md`](docs/seams.md) — the layer seams: the screen-operation
+  API and the backend drawing protocol.
 
-## Installation and Setup
+## Installation
 
-### Dependencies
-
-This project uses `bundle install --standalone` to manage dependencies:
+Dependencies are managed with Bundler; `skrift` and `skrift-x11` are
+developed alongside this project and are referenced as local path gems in
+the `Gemfile`.
 
 ```bash
-bundle install --standalone
+bundle install
 ```
 
-### Running
-
-After installing dependencies, run:
+## Running
 
 ```bash
-ruby termtest.rb
+bundle exec rubyterm                 # start a terminal running your $SHELL
+bundle exec rubyterm bash -lc htop   # ...or run a specific command
 ```
 
-With some luck you'll get a terminal window.
+With some luck you'll get a terminal window. Once the gem (and its
+dependencies) are installed system-wide, the `rubyterm` executable can be
+run directly.
 
 ## Configuration
 
-Ruby Term can be configured using a TOML configuration file located at `~/.config/rterm/config.toml`. See `example-config.toml` for a complete example.
+Configuration is read from `~/.config/rterm/config.toml` (TOML). See
+[`example-config.toml`](example-config.toml) for a complete example. If the
+file is absent, defaults are used.
 
-### Configuration Options
-
-#### Shell Configuration
-
-- **`shell`** (string): Path to the shell executable to use
-  - Default: Uses `ENV["SHELL"]` if set, otherwise falls back to `/bin/sh`
-  - Example: `shell = "/bin/bash"`
-
-#### Font Configuration
-
-- **`fonts`** (array of strings): List of fonts to use, in priority order
-  - Supports multiple font formats and sources:
-    - Direct file paths (with `~` expansion): `"~/fonts/MyFont.ttf"`
-    - Files in `~/.local/share/fonts/`: `"FiraCode-Regular.ttf"`
-    - System fonts via `fc-match`: `"monospace"`
-    - Fonts with fc-match options: `"monospace:weight=bold"`
-  - When a glyph is unavailable in the first font, subsequent fonts are tried
-  - Example:
-    ```toml
-    fonts = [
-      "FiraCode-Regular.ttf",
-      "unifont-15.0.06.ttf",
-      "monospace"
-    ]
-    ```
-
-- **`fontsize`** (integer): Font size in points
-  - Default: Platform dependent
-  - Example: `fontsize = 32`
-
-### Font Resolution
-
-The font resolution process works as follows:
-
-1. **Direct path**: If the font name is a valid file path, it's opened directly
-2. **Local fonts**: Check `~/.local/share/fonts/[fontname]`
-3. **System fonts**: Use `fc-match --format='%{file}\n' [fontname]` to find system fonts
-4. **fc-match options**: Font names without extensions or with fc-match syntax are passed to fc-match
-
-### Example Configuration
+- **`shell`** — path to the shell to launch. Defaults to `$SHELL`, then
+  `/bin/sh`. Example: `shell = "/bin/bash"`.
+- **`fonts`** — fonts to use, in priority order; later fonts cover glyphs
+  missing from earlier ones. Each entry may be a direct path
+  (`"~/fonts/MyFont.ttf"`), a file in `~/.local/share/fonts/`, or a name
+  resolved via `fc-match` (`"monospace"`, `"monospace:weight=bold"`).
+- **`fontsize`** — font size in points (e.g. `fontsize = 24`).
+- **`deccolm`** — how the 80/132-column DECCOLM switch is realised:
+  `"font"` (rescale the glyph cell, the default) or `"window"` (ask the WM
+  to resize).
 
 ```toml
-# Shell to use (optional)
 shell = "/bin/zsh"
-
-# Font configuration
 fonts = [
-  "FiraCode-Regular.ttf",    # Programming font with ligatures
-  "unifont-15.0.06.ttf",    # Unicode fallback font
-  "monospace"                # System monospace fallback
+  "FiraCode-Regular.ttf",   # programming font
+  "unifont-15.0.06.ttf",    # Unicode fallback
+  "monospace"               # system fallback
 ]
-
 fontsize = 24
 ```
 
-### Configuration File Location
+## Development
 
-The configuration file should be placed at:
-```
-~/.config/rterm/config.toml
+```bash
+rake test          # the minitest unit/integration suite
+rake run           # run the terminal (alias for bin/rubyterm)
 ```
 
-If this file doesn't exist, Ruby Term will use default values for all settings.
+There is a deterministic **test harness** for terminal correctness: it
+runs cases through the engine and an oracle (tmux), diffs the resulting
+screen state, and gates regressions with a ratchet. It can also record and
+replay real applications, and run an instrumented live terminal with a
+debug socket.
+
+```bash
+ruby harness/cli.rb run   --case cases/synthetic/dch.bin --oracle tmux
+ruby harness/cli.rb sweep --cases cases --oracle tmux --ratchet ratchet.json
+```
+
+- [`docs/harness.md`](docs/harness.md) — the harness guide, and
+  [`docs/harness-quickstart.md`](docs/harness-quickstart.md) — from a glitch
+  to a minimal repro.
+- [`docs/state-schema.md`](docs/state-schema.md) — the JSON terminal-state
+  dump schema.
+- [`docs/debugging-live-render.md`](docs/debugging-live-render.md) —
+  debugging live-terminal display corruption.
+- [`docs/bench-baseline.md`](docs/bench-baseline.md) — the performance
+  baseline used to gate the optimisation work.
+
+## Direction
+
+Where I want to take this:
+
+- Keep the engine fully decoupled from the pty and X11 so Ruby applications
+  can instantiate a "terminal" with an IO object as its interface — the
+  first consumer being my own text editor — and package the engine as a
+  gem. (The split exists; the gem and the editor migration are in progress.)
+- Make the terminal complete enough to run most Unix command-line tools: a
+  reasonably complete, Unicode-aware xterm/VT100.
+- Keep the code **small but understandable**. Terseness is valued only
+  while it preserves readability.
 
 ## Resources
 
-https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Definitions
-https://www.xfree86.org/current/ctlseqs.html
+- xterm control sequences: <https://invisible-island.net/xterm/ctlseqs/ctlseqs.html>
+- XFree86 control sequences: <https://www.xfree86.org/current/ctlseqs.html>

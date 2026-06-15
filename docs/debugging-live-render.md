@@ -44,7 +44,7 @@ terminal actually received, with the real read boundaries:
 1. **Instrument `RubyTerm#write`** to log every pty chunk as it arrives
    (base64, one line per `write` call = one `read_nonblock(128)` worth,
    preserving the real boundary). A thin launcher that `require`s
-   `termtest` + the debug server and prepends a write-logger is enough;
+   `rubyterm` + the debug server and prepends a write-logger is enough;
    no production changes.
 2. **Run the app live** in the instrumented terminal. **htop is the
    ideal target**: it self-redraws on a timer, so you need *no*
