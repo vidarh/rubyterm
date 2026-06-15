@@ -35,6 +35,7 @@ module Harness
       @adapter = WindowAdapter.new(@window, self)
       @termbuffer = TermBuffer.new
       @buffer = TrackChanges.new(@termbuffer, @adapter)
+      @buffer.defer = true # damage-driven rendering (mirrors the live terminal)
       @term = Term.new(@buffer, @adapter)
       @term.resize(cols, rows)
       @buffer.on_resize(cols, rows)
@@ -67,8 +68,9 @@ module Harness
         off += chunk
         @term.clear_cursor
         @term.feed(slice)
+        @buffer.draw_flush  # draw the chunk's damaged content...
         @term.draw_cursor
-        @buffer.draw_flush
+        @buffer.draw_flush  # ...then the cursor overlay on top
       end
       self
     end

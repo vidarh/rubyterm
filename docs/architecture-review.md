@@ -527,11 +527,20 @@ rewrite. Stop points are marked — partial adoption still pays off.
 >   a per-instance scratch cell instead of allocating `[c,fg,bg,mode]` per
 >   character (draw_buffered reads it synchronously and never retains it).
 >   Cumulative alloc/KB now **−63%** vs baseline (6484 → 2426).
-> - **Remaining Phase 3 (damage-driven backends).** Move the run-batcher
->   out of `TrackChanges` into the backend and have backends consume
->   `generation_at` as damage (decouple mutation from rendering: `set`
->   bumps the generation; a `flush(backend)` walks the dirty cells).
->   Interpreter-side per-char allocs (UTF8Decoder/EscapeParser) are Phase 8.
+> - **Damage-driven flush (done).** Mutation is decoupled from rendering:
+>   in `defer` mode `TrackChanges#set` only mutates, and `draw_flush` walks
+>   the buffer's damage (`TermBuffer#each_damaged`, gated by row-level
+>   dirty tracking) and draws the changed cells. This is now the live
+>   default in both the terminal (termtest.rb) and the harness. Built and
+>   proven equivalent first (`test_damage.rb` compares eager vs deferred
+>   via the AnsiBackend round-trip), then flipped; the markers/redraw/state
+>   ratchet passes on the deferred path, perf is neutral (dirty-row
+>   tracking keeps `each_damaged` from walking the whole grid), and a live
+>   Xvfb render confirms the X11 path. The run-batcher stays shared in
+>   `TrackChanges` (its same-attr runs suit both the X11 and Ansi backends),
+>   rather than being pushed into each backend.
+> - **Still open:** interpreter-side per-char allocs (UTF8Decoder/
+>   EscapeParser) — Phase 8.
 
 - Merge `TermBuffer` + `ScrBuf` + the *model-mutation* half of
   `TrackChanges` into a single `Screen` backed by columnar parallel

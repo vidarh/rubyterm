@@ -59,6 +59,7 @@ class TermBuffer
     @scrollback_buffer = []
     @scrollback_lineattrs = []
     @blinky = Set.new
+    @row_dirty = [] # rows changed since the last each_damaged walk
     # NB: @generation is deliberately NOT reset - it stays monotonic across
     # clears so a redrawn-after-clear cell never collides with a stale gen.
   end
@@ -156,7 +157,9 @@ class TermBuffer
   # generation so the caller can advance its watermark. (Walks all rows;
   # row-level dirty tracking is a later optimisation.)
   def each_damaged(since_gen)
-    @gen.each_index do |y|
+    @row_dirty.each_index do |y|
+      next unless @row_dirty[y]
+      @row_dirty[y] = false
       gens = @gen[y] or next
       chars = @chars[y]
       styles = @style[y]
@@ -252,6 +255,7 @@ class TermBuffer
     # damaged).
     if @chars[y][x] != ch || @style[y][x] != style
       @gen[y][x] = (@generation += 1)
+      @row_dirty[y] = true
     end
     @chars[y][x] = ch
     @style[y][x] = style

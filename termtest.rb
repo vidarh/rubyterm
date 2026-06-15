@@ -105,6 +105,7 @@ class RubyTerm
     @window.map_window
 
     @buffer = TrackChanges.new(TermBuffer.new, @adapter)
+    @buffer.defer = true # damage-driven rendering: set() mutates, flush draws
     @term = Term.new(@buffer, @adapter)
     @buffer.on_resize(@term.width, @term.height)
 
@@ -228,6 +229,9 @@ class RubyTerm
 
     @term.feed(str)
 
+    # Draw the chunk's damaged content (damage-driven flush), then the
+    # cursor overlay on top.
+    @buffer.draw_flush
     # FIXME: Do this only when a) queue is empty or b)
     # a certain amount of time has elapsed.
     @term.draw_cursor
