@@ -1,2 +1,10 @@
 *~
 logs
+
+# Local debug/session artifacts (never commit)
+debuglog.txt
+conversation.txt
+record.jsonl
+tmux.jsonl
+.claude/settings.local.json
+tests/esctest2

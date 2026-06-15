@@ -147,13 +147,9 @@ class ScrBuf
   end
 
   def enforce_height
-    if @h
-      p [:enforce_height, @h, @scrbuf.length]
-      @scrbuf.slice!(@h..)
-      @lineattrs.slice!(@h..)
-    else
-      p [:enforce_height_no_h]
-    end
+    return unless @h
+    @scrbuf.slice!(@h..)
+    @lineattrs.slice!(@h..)
   end
 
   def resize(w,h)

@@ -28,7 +28,6 @@ def update_keymap(dpy)
       end
     end.each_slice(reply.keysyms_per_keycode).to_a
     #ks = ks.map {|s| s.compact.sort_by{|x| x.to_s}.uniq }.to_a # This is for testing/ease of reading only
-    p $kmap[47-dpy.display_info.min_keycode]
   end
 end
 
@@ -72,7 +71,6 @@ def lookup_string(dpy, event)
       str = ks[i]
     end
   end
-  p [ks[i], str]
   return ks[i], str
 end
 

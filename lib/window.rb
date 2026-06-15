@@ -370,7 +370,6 @@ class Window
     if @dirty
       # FIXME: Keep track of dirty region
       @dirty = false
-      p :flush
       copy_buffer
     end
   end

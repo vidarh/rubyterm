@@ -18,7 +18,6 @@ class Controller
     cmd = args.empty? ? @shell : [@shell, '-c', args.join(' ')]
     @master, @wr, @pid = *PTY.spawn(*cmd)
 
-    p "Controller: #{@master}"
     Thread.new do
       loop do
         begin
@@ -70,7 +69,6 @@ class Controller
   end
 
   def mouse_digits(event, x, y, release)
-    p "\e[<#{event};#{x + 1};#{y + 1}#{release ? "m" : "M"}"
     @wr.write("\e[<#{event};#{x + 1};#{y + 1}#{release ? "m" : "M"}")
   end
 

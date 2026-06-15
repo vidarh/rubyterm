@@ -87,7 +87,6 @@ class TrackChanges
   end
   
   def method_missing(sym, *args, &block)
-    p [:TRACK, sym, *args, block]
     @buffer.send(sym, *args, &block)
   end
 
@@ -154,8 +153,6 @@ class TrackChanges
   end
 
 
-  $saved = 0
-
   # This is a hack
   def draw_buffered(x,y,cell, force=false)
     @last_x ||= -255
@@ -202,8 +199,6 @@ class TrackChanges
     # FIXME: The #to_s here is a workaround for thread sync issues.
     if @buf[0].to_s.empty?
       if match
-        $saved += 1
-        p $saved if $saved % 500 == 0
         return
       else
         #p [:diff, x,y, cell, bcell]
