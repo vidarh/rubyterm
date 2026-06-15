@@ -517,11 +517,17 @@ rewrite. Stop points are marked — partial adoption still pays off.
 >   −15% (6484→5477, with the draw path still reconstructing cells via
 >   `get` — see below), GC time −57%, live retained −86%. Ratchet + tests
 >   green.
-> - **Remaining Phase 3 (damage-driven backends).** The big alloc/KB win
->   is still ahead: make the draw-batch match columnar-aware (stop
->   reconstructing a cell Array per char in `TrackChanges#draw_buffered`),
->   move the run-batcher into the backend, and have backends consume
->   `generation_at` as damage rather than the `@changes` set.
+> - **Draw-batch made columnar-aware (done).** `TrackChanges#draw_buffered`
+>   now skips identical repaints via `TermBuffer#cell_eq?`/`#unset?`
+>   instead of reconstructing a cell Array per char, and the dead
+>   write-only `@changes`/`@scroll` damage sets were removed. Cumulative
+>   Phase 2 result vs baseline: **throughput +59%**, alloc/KB −47%
+>   (6484→3433), GC time −84%, live retained −90%. Ratchet + tests green.
+> - **Remaining Phase 3 (damage-driven backends).** Move the run-batcher
+>   out of `TrackChanges` into the backend, have backends consume
+>   `generation_at` as damage, and drop the remaining per-char cell-arg
+>   Array (`draw_buffered([c,fg,bg,mode])`). Plus the interpreter-side
+>   per-char allocs (UTF8Decoder/EscapeParser) for Phase 8.
 
 - Merge `TermBuffer` + `ScrBuf` + the *model-mutation* half of
   `TrackChanges` into a single `Screen` backed by columnar parallel

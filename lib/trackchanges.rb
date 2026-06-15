@@ -14,21 +14,9 @@ class TrackChanges
     # the screen AFTER the clear and survive it (stale content; the buffer
     # is already correct, so only the incremental render diverges).
     draw_flush
-    clear_changes
-    @cleared = true
-
     @buffer.clear
     @adapter.clear unless @adapter.scrollback_mode
   end
-
-  def clear_changes
-    @cleared = false
-    @changes = Set.new
-    @scroll = []
-  end
-
-  # FIXME: Organize these in lines and spans
-  def changes = @changes
 
   # Methods that does not alter the buffer
   def lineattrs(y)  = @buffer.lineattrs(y)
@@ -43,9 +31,6 @@ class TrackChanges
   # # Mutation
   #
   def scroll_up
-    @scroll << [:up, @buffer.scroll_start, @buffer.scroll_end]
-    # FIXME: Need to "scroll" @blinky and @changes as well
-    # so that they are "net" of scrolling.
     @buffer.scroll_up
   end
 
@@ -70,12 +55,10 @@ class TrackChanges
   end
 
   def set(x,y,c,fg,bg,mode)
-    @changes << [x,y]
-
-    # MUST be before the @buffer.set below,
-    # as it currently uses @buffer.get to compare and
-    # avoid unnecessary redraws. Skipped while scrolled back so live output
-    # does not paint over the scrolled-back view (the buffer still updates).
+    # MUST be before the @buffer.set below, as draw_buffered compares
+    # against the buffer's *current* content to avoid redundant redraws.
+    # Skipped while scrolled back so live output does not paint over the
+    # scrolled-back view (the buffer still updates).
     draw_buffered(x,y,[c,fg,bg,mode]) unless @adapter.scrollback_mode
     @buffer.set(x,y,c,fg,bg,mode)
   end
@@ -195,17 +178,13 @@ class TrackChanges
     if force
       match = false
     else
-      bcell = Array(@buffer.get(x,y))
-      
-      # FIXME: Make this more deliberate about *background* attributes
-      # Currently it gradually fills in unless we add the cell[2] == BG part
-      # But when we then do that, it *renders* that instead of just clearing
-      # the background. Also distinction between drawing the background and
-      # clearing it. Improved slightly by rstrip'ing the string in the rendering
-      # code.
-      match = (cell[0] == 32 && bcell.empty? && cell[2] == BG) || cell == bcell
-
-      #p [cell, bcell, match]
+      # Skip the draw if the buffer already holds this exact cell, or if
+      # we're writing a default-background space over an unset cell.
+      # Compared against the buffer's columnar storage directly, so no cell
+      # Array is reconstructed per character.
+      # FIXME: Make this more deliberate about *background* attributes.
+      match = (cell[0] == 32 && cell[2] == BG && @buffer.unset?(x, y)) ||
+              @buffer.cell_eq?(x, y, cell[0], cell[1], cell[2], cell[3])
     end
 
     # FIXME: The #to_s here is a workaround for thread sync issues.

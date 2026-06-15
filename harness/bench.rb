@@ -284,8 +284,8 @@ else
     end
   end
   puts
-  puts "alloc/KB is the headline Phase-2 metric (TermBuffer#set allocates an"
-  puts "Array per glyph today; columnar storage should cut it sharply). For the"
-  puts "virtual sink read alloc/KB + live(+), NOT MB/s. AXIS (b) — input/Ctrl-C"
-  puts "latency under flood — needs the live pty + threads, measured separately."
+  puts "alloc/KB + live(+) are the deterministic regression metrics (compare"
+  puts "to harness/bench-baseline.json). For the virtual sink read those, NOT"
+  puts "MB/s (copy_area-bound). AXIS (b) — input/Ctrl-C latency under flood —"
+  puts "needs the live pty + threads, measured separately."
 end

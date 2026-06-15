@@ -149,6 +149,20 @@ class TermBuffer
     g = @gen[y] and g[x]
   end
 
+  # True if (x,y) currently holds exactly this content. Lets the draw path
+  # skip identical repaints without reconstructing a cell Array (the prior
+  # `new == get(x,y)` allocated one per character).
+  def cell_eq?(x, y, ch, fg, bg, flags)
+    chars = @chars[y] or return false
+    chars[x] == ch && @style[y][x] == pack_style(fg, bg, flags)
+  end
+
+  # True if (x,y) has never been written (blank).
+  def unset?(x, y)
+    chars = @chars[y]
+    !chars || chars[x].nil?
+  end
+
   # Yields [x, y, cell] for every *set* cell, scrollback (if offset>0) first
   # at the top, then the live grid below it.
   def each_character(scrollback_offset = 0)
