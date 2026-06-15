@@ -196,3 +196,45 @@ End and typing dispatch correctly. The default (ansiterm) and `RE_RUBYTERM`
 Remaining polish: window focus (bare-X has none - a WM handles it normally);
 live window-resize → grid; the AnsiBackend-path follow-ups above (byte
 size, the 1-cell markdown diff) before defaulting either path on.
+
+### `-x11` keystroke latency (investigated, mostly fixed)
+
+Reported symptom: ~1s/keystroke, "janky", unpredictable. Root causes found
+and fixed (all in `re/lib/re/x11.rb`):
+
+1. **Per-byte render storm.** `handle_input` processed one byte per call, so
+   the bytes of an arrow's escape (`\e[B`) were spread across calls with a
+   full render between each. That both rendered 3x per arrow *and* let
+   KeyboardMap's escape timeout fire mid-sequence, splitting the arrow into
+   stray characters in the status line. Fix: drain the whole input buffer in
+   one call (commit `83effce`).
+2. **Spurious second render.** `handle_input` returned `[]` when idle;
+   `Editor#handle_input` guards with `if c = @ctrl.handle_input` and `[]` is
+   truthy, so every keystroke forced a second full render. Fix: return `nil`
+   when nothing was dispatched (commit `795a6a5`).
+3. **Expose → full re-render.** The Expose handler ran a full `re.render`;
+   under a compositor each render's flush emits another Expose → storm.
+   Fix: Expose just re-blits the back buffer (`window.flush`); only key
+   input and resize trigger a real render (commit `faba1fe`).
+
+**Measured on the real X server (`:0`), clean system, ~37-row window:**
+`view.render` median **7.6ms**, p90 11.5ms, with exactly **1 render per
+keystroke**. Breakdown: rubyterm core (TermBuffer→damage→WindowAdapter
+draw + flush) is only **2-6ms**; re's own `View#render` row-build is
+~3ms; Rouge highlighting is cached (`moderender≈0ms`). First (cold) paint
+is ~65ms - glyph rasterization for every cell - then damage tracking drops
+it to near-zero.
+
+**Caution for future profiling:** an early reading of ~31ms/render was
+*contaminated by ~20 leaked `re --x11` test processes* (several spinning in
+`binding.pry`) hammering the CPU and X server. Always reap spawned test
+processes before trusting a perf number; the clean figure was ~6x lower.
+
+Residual: a ~46ms tail on occasional frames (GC from re rebuilding every
+visible row's `AnsiTerm::String` each frame). Median is smooth; the tail
+would need a re-side change to skip rebuilding unchanged rows (re's own
+FIXMEs). Not yet done.
+
+Debug harness `RE_X11_TIME=1` (EV/RENDER/TIME lines to stderr) is still
+present in `editor.rb`/`x11.rb`/`rubyterm_screen.rb` - env-gated; strip
+before merging the migration back to the canonical `re`.
