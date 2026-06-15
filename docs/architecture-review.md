@@ -618,9 +618,17 @@ the backend.
   and gives `re` the (optional) full interpreter and a profiled buffer.
 
 ### Phase 7 — Third backend + cleanup
-- Add `BitmapBackend` (cells → RGBA): proves backend-agnosticism and
-  gives X11-free visual testing.
-- Delete dead code and the now-redundant adapter/leftover names.
+- **`BitmapWindow` (done).** A third implementation of the Window drawing
+  interface (after the X11 `Window` and the harness `VirtualWindow`):
+  it rasterises real glyphs with skrift and composites them into an
+  in-memory RGB buffer. Wrapped by `WindowAdapter` it is a full bitmap
+  backend — the same `Term` core rendered to a pixel buffer with no X
+  server. Reuses all of `WindowAdapter`'s cell→pixel + scroll geometry, so
+  only the pixel ops + glyph blend are new (~150 lines). Proves the seam
+  is backend-agnostic and gives **X11-free visual testing** (`#save_png`).
+  Tested (`test_bitmapwindow.rb`): glyphs land in the right cells, fg
+  colour, clear, and scroll all verified against the pixel buffer.
+- Still: delete remaining dead code / leftover names as they surface.
 
 ### Phase 8 — Performance (optimise against the baseline, now that it's safe)
 Deferred to the end on purpose: by here the data model is columnar, the
