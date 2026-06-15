@@ -40,7 +40,7 @@ require 'set'
 # per-cell objects, ~40x fewer retained objects than the old form).
 class TermBuffer
   attr_accessor :scroll_start, :scroll_end
-  attr_reader :w, :scrollback_buffer, :scrollback_lineattrs
+  attr_reader :w, :scrollback_buffer, :scrollback_lineattrs, :generation
 
   def initialize
     @w = nil
@@ -147,6 +147,28 @@ class TermBuffer
   def generation_at(x, y)
     return nil if y < 0
     g = @gen[y] and g[x]
+  end
+
+  # Yield [x, y, ch, fg, bg, flags] for every cell whose content changed
+  # after +since_gen+ - the damage since the last flush - as scalars, no
+  # cell Array allocated. A damage-driven renderer walks this instead of
+  # being told to draw eagerly on every #set. Returns the current
+  # generation so the caller can advance its watermark. (Walks all rows;
+  # row-level dirty tracking is a later optimisation.)
+  def each_damaged(since_gen)
+    @gen.each_index do |y|
+      gens = @gen[y] or next
+      chars = @chars[y]
+      styles = @style[y]
+      gens.each_index do |x|
+        g = gens[x]
+        next if !g || g <= since_gen
+        ch = chars[x] or next
+        s = styles[x]
+        yield x, y, ch, s & 0xFFFFFF, (s >> 24) & 0xFFFFFF, s >> 48
+      end
+    end
+    @generation
   end
 
   # True if (x,y) currently holds exactly this content. Lets the draw path

@@ -4,10 +4,17 @@ class TrackChanges
   def initialize buffer, adapter
     @buffer = buffer
     @adapter = adapter
+    # When true, #set only mutates the buffer; rendering is deferred to the
+    # next #draw_flush, which walks the buffer's damage (generation) instead
+    # of drawing eagerly per cell. Default off (the proven eager path) while
+    # the damage-driven path is validated against it; see test_damage.rb.
+    @defer = false
+    @last_flush_gen = 0
     clear
   end
 
   attr_reader :buffer
+  attr_accessor :defer
 
   def clear
     # Flush any batched text first: otherwise pending draws are emitted to
@@ -64,7 +71,7 @@ class TrackChanges
     # retains the array, so we reuse a per-instance scratch cell instead of
     # allocating [c,fg,bg,mode] per character. Safe: a single processing
     # thread, with no re-entrancy back into #set.
-    unless @adapter.scrollback_mode
+    unless @defer || @adapter.scrollback_mode
       s = (@scratch ||= [])
       s[0], s[1], s[2], s[3] = c, fg, bg, mode
       draw_buffered(x, y, s)
@@ -136,7 +143,27 @@ class TrackChanges
     draw_buffered(screen_x, screen_y, @buffer.get(screen_x, buffer_y), true)
   end
 
+  # Public flush point. In the default (eager) mode draws already happened
+  # on #set, so this just emits the pending run. In damage-driven (defer)
+  # mode #set only mutates, so a flush first walks the buffer's damage and
+  # draws the changed cells (run-batched) before emitting. Either way it
+  # then emits the run buffer, which also carries force-redraws (cursor,
+  # ICH/DCH, blink, selection).
   def draw_flush
+    if @defer && !@adapter.scrollback_mode
+      @buffer.each_damaged(@last_flush_gen) do |x, y, ch, fg, bg, flags|
+        s = (@scratch ||= [])
+        s[0], s[1], s[2], s[3] = ch, fg, bg, flags
+        draw_buffered(x, y, s, true)
+      end
+      @last_flush_gen = @buffer.generation
+    end
+    flush_buf
+  end
+
+  # Emit the batched run and reset the batch. Internal: draw_buffered calls
+  # this on a run break, so it must NOT re-enter the damage walk above.
+  def flush_buf
     if @bufx && @buf && @buf[0] && !@buf[0].empty?
       c = @buf[0]
       fg = @buf[1] || PALETTE_BASIC[7]
@@ -166,11 +193,11 @@ class TrackChanges
 
     #p [:buffered, x, y, cell, @bufx, @bufy, @buf, force]
     if @buf[0] && @buf[0].length > 160
-      draw_flush
+      flush_buf
     elsif @last_y != y || @last_x + 1 != x
-      draw_flush
+      flush_buf
     elsif (@buf[1] != cell[1]) or (@buf[2] != cell[2]) or (@buf[3] != cell[3])
-      draw_flush
+      flush_buf
     else
     end
 
@@ -213,7 +240,7 @@ class TrackChanges
       if @buf[0]&.length.to_i > 8
         # If flushing here, chop the buffer down to the point of the first
         # match.
-        draw_flush
+        flush_buf
         return
       end
     end
