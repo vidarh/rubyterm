@@ -509,12 +509,19 @@ rewrite. Stop points are marked — partial adoption still pays off.
 >   instead of object-per-cell. Safe: it never touches the live grid or
 >   gen-tracking. Result vs baseline: live objects retained −83% (5.8×),
 >   GC time −50%, alloc/KB flat. Ratchet + tests green.
-> - **2b — live-grid columnar (deferred, merges with Phase 3).** The
->   alloc/KB win (~6500 → ~650) needs the live grid columnar, which needs
->   the gen-tracking redesigned to not key on cell identity. Do it
->   together with making damage first-class, where a native per-cell
->   generation/version becomes the legitimate damage primitive the
->   markers check reads (not a debug hook).
+> - **2b — live-grid columnar + native damage generation (done).** The
+>   live grid is now columnar parallel arrays of immediates, and
+>   `TermBuffer#generation_at` is a native per-cell generation (the damage
+>   primitive). The harness markers check reads it instead of the old
+>   identity hash (`patches.rb`). Cumulative result vs baseline: alloc/KB
+>   −15% (6484→5477, with the draw path still reconstructing cells via
+>   `get` — see below), GC time −57%, live retained −86%. Ratchet + tests
+>   green.
+> - **Remaining Phase 3 (damage-driven backends).** The big alloc/KB win
+>   is still ahead: make the draw-batch match columnar-aware (stop
+>   reconstructing a cell Array per char in `TrackChanges#draw_buffered`),
+>   move the run-batcher into the backend, and have backends consume
+>   `generation_at` as damage rather than the `@changes` set.
 
 - Merge `TermBuffer` + `ScrBuf` + the *model-mutation* half of
   `TrackChanges` into a single `Screen` backed by columnar parallel

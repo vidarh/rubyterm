@@ -3,33 +3,15 @@
 # needs is plugged in here via Module#prepend / class reopening.
 
 module Harness
-  # Tracks a per-cell "generation": a monotonically increasing write
-  # counter, bumped only when a cell's *content* actually changes.
-  # Identical rewrites keep their generation, which keeps the tracker
-  # consistent with TrackChanges' skip-identical-redraw optimization.
-  #
-  # Generations are stored in an identity hash keyed on the cell arrays
-  # themselves, so they follow cells through scrolls and line
-  # insert/delete without mirroring any buffer operations.
+  # The markers check needs a per-cell "generation" - a counter bumped only
+  # when a cell's content actually changes, that follows the cell through
+  # scrolls and insert/delete. TermBuffer now tracks exactly that natively
+  # as its damage primitive (#generation_at), so the harness just borrows
+  # it under the name the check expects. (The old identity-hash tracker,
+  # keyed on cell-array object identity, became impossible once cells
+  # stopped being objects under columnar storage.)
   module GenTracking
-    def harness_gen_for(x, y)
-      cell = get(x, y)
-      cell && @harness_gens ? @harness_gens[cell] : nil
-    end
-
-    def set(x, y, ch, fg = 0, bg = 0, flags = 0)
-      old = get(x, y)
-      super
-      cell = get(x, y)
-      return if !cell
-      @harness_gens ||= {}.compare_by_identity
-      @harness_gen ||= 0
-      if old && old[0, 4] == cell[0, 4] && @harness_gens.key?(old)
-        @harness_gens[cell] = @harness_gens[old]
-      else
-        @harness_gens[cell] = (@harness_gen += 1)
-      end
-    end
+    def harness_gen_for(x, y) = generation_at(x, y)
   end
 end
 

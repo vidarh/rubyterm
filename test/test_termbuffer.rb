@@ -81,10 +81,10 @@ class TestTermBuffer < Minitest::Test
 
   def test_line_at_does_not_autovivify
     # line_at must be non-mutating: reading a non-existent row must not
-    # grow the buffer (unlike #[], which auto-vivifies).
-    scrbuf = @buf.instance_variable_get(:@scrbuf)
-    before = scrbuf.scrollback_buffer.size
-    assert_nil scrbuf.line_at(-5)
-    assert_equal before, scrbuf.scrollback_buffer.size
+    # grow the buffer or its scrollback.
+    before = @buf.scrollback_size
+    assert_nil @buf.line_at(-5)
+    assert_nil @buf.line_at(3)
+    assert_equal before, @buf.scrollback_size
   end
 end
