@@ -653,6 +653,35 @@ both axes:
 > **Value:** the user-visible wins (fast `cat`, instant Ctrl-C) land on a
 > codebase that can prove they didn't cost correctness.
 
+> **Progress — jump-scrolling (DONE, throughput axis).** The damage model
+> made the "acceptable cheat" clean: `TrackChanges#suspend` suppresses all
+> rendering (the buffer + scrollback still mutate) so a flood is interpreted
+> across many chunks and then painted with ONE full redraw of the final
+> screen. Wired into `RubyTerm#process_chunk`: when the input queue backs up
+> past `JUMP_BACKLOG`, suspend per-chunk rendering and let the screen catch
+> up at the 30fps flush tick or when the queue drains; every exit from a
+> suspended run is a *full* redraw (suspended scrolls skip their blits, so
+> only `redraw_all` can reconstruct the screen).
+>   - Correctness validated three ways: byte-identical framebuffer on a real
+>     backend (`test_bitmapwindow` jump vs incremental); a deterministic
+>     replay of the exact `process_chunk` control flow matching a
+>     pure-incremental reference; and a live `cat` flood under a headless X
+>     server converging to the exact final screen via `dump_state`.
+>   - **Throughput: ~1100× on a glyph-rasterising backend** (150 KB scrolling
+>     flood through `BitmapWindow`: 760 s incremental → 0.69 s jump-scrolled
+>     — it renders the final 24 rows once instead of rasterising thousands of
+>     scrolled-off lines). On X11 (cheap CopyArea blits) the win is smaller;
+>     the larger lever there is the **time-to-stop** axis below.
+>   - Opt-in (suspend defaults off): ratchet clean (55, 0 regressions),
+>     `rake test` green (95).
+>
+> **Still open on the Ctrl-C / time-to-stop axis.** Jump-scrolling already
+> helps it (not rendering the backlog lets the processing thread drain the
+> queue far faster, so output stops sooner after the source does), but it is
+> not yet *measured* as a time-to-stop number, and the read-ahead backlog is
+> not explicitly bounded. An X11-inclusive drain-time benchmark is still a
+> TODO.
+
 **Sequencing note.** Phases 2–4 deliver rterm value without touching
 `re`. Phase 5 delivers the text backend. Phase 6 is the `re` payoff.
 Phase 8's optimisations apply whether or not `re` migrated. The benchmark
