@@ -1,0 +1,76 @@
+{
+  "config": {
+    "cols": 80,
+    "rows": 24,
+    "chunk": 128,
+    "mb": 1.0,
+    "virtual_kb": 16,
+    "ruby": "3.2.2"
+  },
+  "results": {
+    "null": {
+      "plain": {
+        "bytes": 1048632,
+        "secs": 4.602449602010893,
+        "mb_per_s": 0.21728720404125174,
+        "allocs": 6640194,
+        "allocs_per_kb": 6484.218158515094,
+        "gc_runs": 210,
+        "gc_ms": 911,
+        "live_retained": 1171804
+      },
+      "ansi": {
+        "bytes": 1048585,
+        "secs": 4.041033323999727,
+        "mb_per_s": 0.24746358242823419,
+        "allocs": 6693766,
+        "allocs_per_kb": 6536.824753358097,
+        "gc_runs": 206,
+        "gc_ms": 885,
+        "live_retained": 866747
+      },
+      "wrap": {
+        "bytes": 1048634,
+        "secs": 4.619373369991081,
+        "mb_per_s": 0.21649155264370468,
+        "allocs": 6555053,
+        "allocs_per_kb": 6401.064882504286,
+        "gc_runs": 200,
+        "gc_ms": 950,
+        "live_retained": 1122192
+      }
+    },
+    "virtual": {
+      "plain": {
+        "bytes": 16393,
+        "secs": 9.135382420994574,
+        "mb_per_s": 0.001711322235719347,
+        "allocs": 1168784,
+        "allocs_per_kb": 73008.89501616544,
+        "gc_runs": 46,
+        "gc_ms": 69,
+        "live_retained": 39234
+      },
+      "ansi": {
+        "bytes": 16388,
+        "secs": 6.548056248982903,
+        "mb_per_s": 0.0023867868727751413,
+        "allocs": 888363,
+        "allocs_per_kb": 55509.13546497437,
+        "gc_runs": 52,
+        "gc_ms": 51,
+        "live_retained": 27881
+      },
+      "wrap": {
+        "bytes": 16541,
+        "secs": 5.215751604991965,
+        "mb_per_s": 0.0030244398242772687,
+        "allocs": 813369,
+        "allocs_per_kb": 50353.053382504084,
+        "gc_runs": 48,
+        "gc_ms": 46,
+        "live_retained": 31282
+      }
+    }
+  }
+}

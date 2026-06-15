@@ -1,4 +1,13 @@
 
+# Bugs
+
+ * Bright SGR colours unhandled: `Term#set_modes` (lib/term.rb) handles
+   30-37/40-47 but not the bright variants 90-97 (fg) and 100-107 (bg),
+   so they fall through to the diagnostic logger and render with no
+   colour change. Map 90-97 -> bright foreground (palette 8-15) and
+   100-107 -> bright background. (Surfaced by harness/bench.rb's ansi
+   workload.)
+
 # Essentials
 
 
@@ -19,6 +28,13 @@
  * Extract out and share the underlying buffer between @re and @rterm
    and gradually migrate more of the screen buffer code into it
    but separate the ANSI rendering and X rendering into backends.
+   (See docs/architecture-review.md + docs/seams.md for the plan.)
+ * Benchmark the full chain INCLUDING X11 (real X server + skrift glyph
+   rasterisation) under Xvfb. harness/bench.rb currently covers the core
+   (null sink) and the full headless pipeline (virtual window) for
+   regression-testing the refactor; an X11-inclusive benchmark is more
+   relevant for future *rendering* optimisation than for regression
+   tracking, so it's deferred.
  
 # Longer term
 

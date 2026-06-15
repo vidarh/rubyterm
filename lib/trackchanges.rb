@@ -86,9 +86,21 @@ class TrackChanges
     @buffer.on_resize(w,h)
   end
   
-  def method_missing(sym, *args, &block)
-    @buffer.send(sym, *args, &block)
-  end
+  # Explicit delegations to the underlying buffer, replacing a catch-all
+  # method_missing so the buffer's surface through TrackChanges is
+  # knowable. Each is a model-only mutation whose on-screen redraw the
+  # caller drives separately (Term#redraw_line_from_cursor after
+  # insert/delete_chars; Term#set_line_attrs after set_lineattrs) or a
+  # read-only query - none of them paint, which is why they bypass the
+  # adapter. (The scroll_start/scroll_end getters are defined above; only
+  # the setters delegate.)
+  def insert(*args)        = @buffer.insert(*args)
+  def delete_chars(*args)  = @buffer.delete_chars(*args)
+  def set_lineattrs(*args) = @buffer.set_lineattrs(*args)
+  def scroll_start=(v); @buffer.scroll_start = v; end
+  def scroll_end=(v);   @buffer.scroll_end = v;   end
+  def scrollback_size      = @buffer.scrollback_size
+  def each_character_between(*args, &block) = @buffer.each_character_between(*args, &block)
 
   def redraw_blink
     return nil if @adapter.scrollback_mode
