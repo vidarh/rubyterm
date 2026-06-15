@@ -51,11 +51,22 @@ class TestAnsiBackend < Minitest::Test
     end
   end
 
+  # A space on the default background with no flags renders identically to
+  # an unset cell (both are blank). Normalise so the round-trip compares
+  # what's *visible*, not internal representation - e.g. clear_cursor over
+  # an unset cell draws a space, invisible on the real terminal.
+  def normalize(cell)
+    return nil if cell.nil?
+    ch, _fg, bg, flags = cell
+    return nil if ch == 32 && bg == 0 && (flags.nil? || flags.zero?)
+    cell
+  end
+
   # Visible grid of a terminal fed +bytes+, as a comparable nested array.
   def grid_cells(bytes)
     term, tc, buffer = build(NullSink.new)
     feed(term, tc, bytes)
-    (0...ROWS).map { |y| (0...COLS).map { |x| buffer.get(x, y) } }
+    (0...ROWS).map { |y| (0...COLS).map { |x| normalize(buffer.get(x, y)) } }
   end
 
   def ansi_escapes(bytes)
@@ -106,5 +117,31 @@ class TestAnsiBackend < Minitest::Test
 
   def test_overwrite_same_cells
     assert_roundtrip "\e[2J\e[1;1HAAAAA\e[1;1HBB\e[1;4HCC"
+  end
+
+  # Render across MULTIPLE frames (take per chunk, with the live cursor
+  # cycle), accumulating output - the path the terminal-in-terminal demo
+  # uses. Catches cross-frame state bugs (a stale tracked cursor after the
+  # trailing cursor-reposition, or a wrong cursor after the startup clear)
+  # that a single-frame round-trip cannot.
+  def ansi_escapes_framed(chunks)
+    term, tc, = build(backend = AnsiBackend.new(COLS, ROWS))
+    out = +"".b
+    chunks.each do |chunk|
+      term.clear_cursor
+      term.feed(chunk.b)
+      term.draw_cursor
+      tc.draw_flush
+      out << backend.take
+    end
+    out
+  end
+
+  def test_multi_frame_rendering
+    chunks = ["\e[2J\e[Hframe one\r\n", "\e[31mframe two\e[0m\r\n",
+              "\e[5;1Hjump here\r\nand more text"]
+    ref = grid_cells(chunks.join.b)
+    replay = grid_cells(ansi_escapes_framed(chunks))
+    assert_equal ref, replay, "multi-frame (per-take) round-trip"
   end
 end

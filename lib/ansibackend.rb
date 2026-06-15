@@ -25,8 +25,13 @@ class AnsiBackend
     DBL_UNDERLINE => 21, OVERLINE => 53,
   }.freeze
 
-  def initialize(cols, rows)
+  # origin_row/origin_col place the rendered screen at an offset on the
+  # real terminal, so the same Term core can be drawn into a sub-window
+  # (a terminal-in-a-terminal / multiplexer pane). With a non-zero origin,
+  # full-screen erase becomes a per-row erase of just the sub-window.
+  def initialize(cols, rows, origin_row: 0, origin_col: 0)
     @cols, @rows = cols, rows
+    @origin_row, @origin_col = origin_row, origin_col
     @out = +"".b
     reset_state
   end
@@ -51,11 +56,15 @@ class AnsiBackend
     @cursor_pos ? @out + cup(@cursor_pos[1], @cursor_pos[0]) : @out.dup
   end
 
-  # Take the output and reset the buffer for the next frame.
+  # Take the output and reset the buffer for the next frame. The trailing
+  # cursor reposition moved the real terminal cursor, so forget the tracked
+  # position (the next frame's first draw must re-issue a CUP). SGR/region
+  # state persists - the real terminal keeps it between frames.
   def take
     s = output
     @out = +"".b
     @cursor_pos = nil
+    @cx = @cy = nil
     s
   end
 
@@ -72,9 +81,16 @@ class AnsiBackend
   end
 
   def clear
-    @out << "\e[H\e[2J"
     reset_state
-    @cx = @cy = 0
+    if @origin_row.zero? && @origin_col.zero?
+      @out << "\e[H\e[2J"
+      @cx = @cy = 0 # \e[H homes the cursor
+    else
+      # Erase only this sub-window's rows, not the whole real screen. This
+      # leaves the cursor at the last erased row, so @cx/@cy stay nil
+      # (reset_state) and the next draw re-issues a CUP.
+      @rows.times { |y| @out << cup(y, 0) << "\e[2K" }
+    end
   end
 
   def clear_line(y, from_x, to_x = nil)
@@ -109,7 +125,7 @@ class AnsiBackend
 
   private
 
-  def cup(row, col) = "\e[#{row + 1};#{col + 1}H"
+  def cup(row, col) = "\e[#{row + 1 + @origin_row};#{col + 1 + @origin_col}H"
 
   def move(y, x)
     return if @cx == x && @cy == y
@@ -119,7 +135,7 @@ class AnsiBackend
 
   def set_region(top, bot)
     return if @region == [top, bot]
-    @out << "\e[#{top + 1};#{bot + 1}r"
+    @out << "\e[#{top + 1 + @origin_row};#{bot + 1 + @origin_row}r"
     @region = [top, bot]
     @cx = @cy = nil # DECSTBM homes the cursor
   end
