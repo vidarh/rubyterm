@@ -168,5 +168,31 @@ Steps 1–4 done; `re` renders through rubyterm's core behind a flag.
 3. **Default on / retire ansiterm** once 1–2 are comfortable; keep
    `ansiterm` vendored as a fallback.
 4. **Later:** simplify `re`'s view to the cell API directly (the author's
-   own FIXMEs), and add the **`-x11` flag** so `re` can open its own X11
-   window via rubyterm's `Window` backend (run without a host terminal).
+   own FIXMEs).
+
+## `-x11` backend (DONE)
+
+`re --x11` runs as a standalone X11 application via rubyterm's pure-Ruby
+`Window` backend - no host terminal, cells drawn straight to the window:
+
+- **Output:** `RubytermX11Screen` (a `RubytermScreen` whose backend is
+  `WindowAdapter`+`Window`; `#to_s` draws + `window.flush`, returns `""`).
+- **Input:** `RubytermX11Controller` (a `Termcontroller` subclass) reads X11
+  `KeyPress` events and reuses rubyterm's `lookup_string` +
+  `keysym_to_vt102` to produce the terminal escape bytes a real terminal
+  would send, fed to Termcontroller's `KeyboardMap` + keybinding dispatch
+  unchanged. Single-threaded: `handle_input` blocks on the next X event;
+  Expose/ConfigureNotify trigger a redraw; raw/pause/suspend are no-ops.
+- **Wiring:** `View`/`Editor` branch on `x11?` for `@out`, `winsize`
+  (window grid), `@ctrl`, and `render`/`reset_screen`/`quit` (skip
+  `IO.console`, nil with no tty). `re.rb` gains a `--x11` flag (loads the
+  X11 stack, runs as one local process).
+
+Verified under Xvfb: re renders a file with full syntax highlighting, line
+numbers, status bar, current-line highlight and a block cursor; arrow keys,
+End and typing dispatch correctly. The default (ansiterm) and `RE_RUBYTERM`
+(AnsiBackend) paths are untouched.
+
+Remaining polish: window focus (bare-X has none - a WM handles it normally);
+live window-resize → grid; the AnsiBackend-path follow-ups above (byte
+size, the 1-cell markdown diff) before defaulting either path on.
