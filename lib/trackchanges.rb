@@ -17,11 +17,21 @@ class TrackChanges
     @defer = false
     @last_flush_gen = 0
     @rows = 24      # overwritten by on_resize before use
+    # When true, ALL rendering is suppressed (the buffer still mutates):
+    # used to jump-scroll a flood of output by interpreting many chunks and
+    # then doing ONE full redraw of the final screen, skipping the
+    # intermediate frames the user would never see. The model (incl.
+    # scrollback) stays correct; only the framebuffer is batched.
+    @suspend = false
     clear
   end
 
   attr_reader :buffer
-  attr_accessor :defer
+  attr_accessor :defer, :suspend
+
+  # Rendering is off either because we're viewing scrollback history or
+  # because output is being jump-scrolled.
+  def suppressed? = @suspend || @adapter.scrollback_mode
 
   def clear
     # Flush any batched text first: otherwise pending draws are emitted to
@@ -29,7 +39,7 @@ class TrackChanges
     # is already correct, so only the incremental render diverges).
     draw_flush
     @buffer.clear
-    @adapter.clear unless @adapter.scrollback_mode
+    @adapter.clear unless suppressed?
   end
 
   # Methods that does not alter the buffer
@@ -57,6 +67,7 @@ class TrackChanges
     start  = @buffer.scroll_start.to_i
     bottom = @buffer.scroll_end || (@rows - 1)
     @buffer.scroll_up
+    return if @suspend
     if @adapter.scrollback_mode
       @adapter.scrollback_anchor
     else
@@ -69,19 +80,19 @@ class TrackChanges
     # Delete repeatedly at the SAME row: each delete shifts the rows below
     # up into y, so deleting at y+i would skip every other line.
     num.times { @buffer.delete_line(y) }
-    @adapter.delete_lines(y, num, @buffer.scroll_end||maxy) unless @adapter.scrollback_mode
+    @adapter.delete_lines(y, num, @buffer.scroll_end||maxy) unless suppressed?
   end
 
   def insert_lines(y, num, maxy)
     draw_flush
     num.times.each {|i| @buffer.insert_line(y+i) }
-    @adapter.insert_lines(y, num, @buffer.scroll_end || maxy) unless @adapter.scrollback_mode
+    @adapter.insert_lines(y, num, @buffer.scroll_end || maxy) unless suppressed?
   end
 
   def clear_line(*args)
     draw_flush
     @buffer.clear_line(*args)
-    @adapter.clear_line(*args) unless @adapter.scrollback_mode
+    @adapter.clear_line(*args) unless suppressed?
   end
 
   def set(x,y,c,fg,bg,mode)
@@ -155,6 +166,10 @@ class TrackChanges
 
   def redraw_all(scrollback_offset = 0)
     @buffer.each_character(scrollback_offset) { |*args| draw_buffered(*args, true) }
+    # We just force-drew every cell, so nothing is damaged relative to now:
+    # advance the watermark before flushing so the damage walk doesn't redraw
+    # it all again (and so the next incremental flush only sees new changes).
+    @last_flush_gen = @buffer.generation
     draw_flush
   end
 
@@ -192,6 +207,7 @@ class TrackChanges
   # then emits the run buffer, which also carries force-redraws (cursor,
   # ICH/DCH, blink, selection).
   def draw_flush
+    return if @suspend   # jump-scrolling: defer all rendering to the redraw
     if @defer && !@adapter.scrollback_mode
       @buffer.each_damaged(@last_flush_gen) do |x, y, ch, fg, bg, flags|
         s = (@scratch ||= [])

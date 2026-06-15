@@ -108,6 +108,54 @@ class TestBitmapWindow < Minitest::Test
     end
   end
 
+  # Jump-scrolling: interpret a flood of output with rendering suspended,
+  # then do ONE full redraw. The final framebuffer must be byte-identical to
+  # rendering every intermediate frame incrementally.
+  def render_flood(bytes, jump:)
+    win = BitmapWindow.new(COLS, ROWS)
+    adapter = WindowAdapter.new(win, Host.new(COLS))
+    tc = TrackChanges.new(TermBuffer.new, adapter)
+    tc.defer = true
+    term = Term.new(tc)
+    term.resize(COLS, ROWS)
+    tc.on_resize(COLS, ROWS)
+    old = $stdout
+    $stdout = StringIO.new
+    bytes = bytes.b
+    if jump
+      tc.suspend = true
+      i = 0
+      while i < bytes.bytesize
+        term.feed(bytes.byteslice(i, 128)); i += 128
+      end
+      tc.suspend = false
+      win.clear(0, 0, win.width, win.height)
+      tc.redraw_all(0)
+      tc.draw_flush
+      term.draw_cursor
+      tc.draw_flush
+    else
+      i = 0
+      while i < bytes.bytesize
+        term.clear_cursor
+        term.feed(bytes.byteslice(i, 128)); i += 128
+        tc.draw_flush
+        term.draw_cursor
+        tc.draw_flush
+      end
+    end
+    win.pixels
+  ensure
+    $stdout = old
+  end
+
+  def test_jump_scroll_matches_incremental
+    skip "skrift / default font not available" unless HAVE_SKRIFT
+    flood = "\e[2J\e[H" + (1..200).map { |i| "line #{i} \e[3#{i % 7}mcontent#{i}\e[0m" }.join("\r\n") + "\r\n"
+    assert_equal render_flood(flood, jump: false), render_flood(flood, jump: true),
+                 "jump-scrolled final screen must equal incremental rendering"
+  end
+
   def test_scrolling_moves_content_up
     feed("\e[2J\e[Hrow0\r\nrow1")
     before = cell_pixels(0, 1).dup   # 'r' of row1 at row 1
