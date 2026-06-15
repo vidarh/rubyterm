@@ -59,7 +59,16 @@ class TrackChanges
     # against the buffer's *current* content to avoid redundant redraws.
     # Skipped while scrolled back so live output does not paint over the
     # scrolled-back view (the buffer still updates).
-    draw_buffered(x,y,[c,fg,bg,mode]) unless @adapter.scrollback_mode
+    #
+    # draw_buffered reads the cell's four fields synchronously and never
+    # retains the array, so we reuse a per-instance scratch cell instead of
+    # allocating [c,fg,bg,mode] per character. Safe: a single processing
+    # thread, with no re-entrancy back into #set.
+    unless @adapter.scrollback_mode
+      s = (@scratch ||= [])
+      s[0], s[1], s[2], s[3] = c, fg, bg, mode
+      draw_buffered(x, y, s)
+    end
     @buffer.set(x,y,c,fg,bg,mode)
   end
 

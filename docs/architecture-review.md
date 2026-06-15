@@ -523,11 +523,15 @@ rewrite. Stop points are marked — partial adoption still pays off.
 >   write-only `@changes`/`@scroll` damage sets were removed. Cumulative
 >   Phase 2 result vs baseline: **throughput +59%**, alloc/KB −47%
 >   (6484→3433), GC time −84%, live retained −90%. Ratchet + tests green.
+> - **Per-char cell-arg Array dropped (done).** `TrackChanges#set` reuses
+>   a per-instance scratch cell instead of allocating `[c,fg,bg,mode]` per
+>   character (draw_buffered reads it synchronously and never retains it).
+>   Cumulative alloc/KB now **−63%** vs baseline (6484 → 2426).
 > - **Remaining Phase 3 (damage-driven backends).** Move the run-batcher
->   out of `TrackChanges` into the backend, have backends consume
->   `generation_at` as damage, and drop the remaining per-char cell-arg
->   Array (`draw_buffered([c,fg,bg,mode])`). Plus the interpreter-side
->   per-char allocs (UTF8Decoder/EscapeParser) for Phase 8.
+>   out of `TrackChanges` into the backend and have backends consume
+>   `generation_at` as damage (decouple mutation from rendering: `set`
+>   bumps the generation; a `flush(backend)` walks the dirty cells).
+>   Interpreter-side per-char allocs (UTF8Decoder/EscapeParser) are Phase 8.
 
 - Merge `TermBuffer` + `ScrBuf` + the *model-mutation* half of
   `TrackChanges` into a single `Screen` backed by columnar parallel
