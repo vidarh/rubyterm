@@ -7,6 +7,14 @@
    colour change. Map 90-97 -> bright foreground (palette 8-15) and
    100-107 -> bright background. (Surfaced by harness/bench.rb's ansi
    workload.)
+ * Font re-scales on `reset`. The DECCOLM (80/132 column) support
+   rescales the font to fit the column count, but `reset` (and any
+   `\e[?3l` to the column count we're already at) triggers a rescale even
+   though nothing changed - a visible, unintended side-effect. Reconsider
+   whether DECCOLM should rescale at all when the width doesn't actually
+   change (skip the rescale if cols == current), and whether RIS/`reset`
+   should touch the font/column scaling at all. (Window#fit_columns /
+   RubyTerm#set_columns, lib/term.rb set_width_and_clear.)
 
 # Essentials
 
