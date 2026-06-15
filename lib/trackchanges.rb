@@ -137,7 +137,7 @@ class TrackChanges
   def each_character_between(*args, &block) = @buffer.each_character_between(*args, &block)
 
   def redraw_blink
-    return nil if @adapter.scrollback_mode
+    return nil if suppressed?
     b = @buffer.blinky
     return nil if b.empty?
     b.each { |x,y| redraw(x,y) }
@@ -150,7 +150,7 @@ class TrackChanges
   # cell under its previous position. A no-op while scrolled back, so the
   # live cursor doesn't paint over the frozen history view.
   def draw_cursor(x, y, visible)
-    return if @adapter.scrollback_mode
+    return if suppressed?
     clear_cursor
     return unless visible
     redraw_with(x, y, bg: CURSOR)
@@ -158,7 +158,7 @@ class TrackChanges
   end
 
   def clear_cursor
-    return if @adapter.scrollback_mode
+    return if suppressed?
     return unless @cursor_pos
     redraw(*@cursor_pos)
     @cursor_pos = nil

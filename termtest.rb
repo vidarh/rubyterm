@@ -216,10 +216,20 @@ class RubyTerm
   # (e.g. blink's redraw racing a feed mid-scroll) corrupts cells
   # non-deterministically. Serializing through the queue is the
   # synchronization.
+  # When more than this many items are already queued behind the chunk we
+  # just processed, we treat it as a flood and jump-scroll: keep
+  # interpreting (the buffer + scrollback still update) but stop rendering
+  # every frame. The screen catches up at the flush tick or when we drain.
+  JUMP_BACKLOG = 8
+
   def process_chunk(str)
     case str
     when :blink      then return blink
-    when :flush      then return @window.flush
+    when :flush
+      # Mid-flood: jump the display to the current state at the flush rate
+      # instead of painting every scrolled-off frame.
+      jump_redraw if @buffer.suspend
+      return @window.flush
     when :do_redraw  then return coalesced_redraw
     end
 
@@ -229,17 +239,33 @@ class RubyTerm
 
     @term.feed(str)
 
-    # Draw the chunk's damaged content (damage-driven flush), then the
-    # cursor overlay on top.
-    @buffer.draw_flush
-    # FIXME: Do this only when a) queue is empty or b)
-    # a certain amount of time has elapsed.
-    @term.draw_cursor
-    @buffer.draw_flush # Ensure everything has been rendered
-    # Output just repainted cells without the selection overlay; re-stamp
-    # it so a streaming program (top, full-screen apps) doesn't erase the
-    # highlight out from under an in-progress copy.
-    reapply_selection
+    if @queue.size > JUMP_BACKLOG
+      # A flood is backing up. Render this frame, then suspend per-chunk
+      # rendering: subsequent chunks only mutate the buffer until the flush
+      # tick jumps the display forward or we catch up.
+      @buffer.draw_flush
+      @buffer.suspend = true
+    elsif @buffer.suspend
+      jump_redraw          # drained after a flood: redraw the final state
+    else
+      # Draw the chunk's damaged content (damage-driven flush), then the
+      # cursor overlay on top.
+      @buffer.draw_flush
+      @term.draw_cursor
+      @buffer.draw_flush # Ensure everything has been rendered
+      # Output just repainted cells without the selection overlay; re-stamp
+      # it so a streaming program (top, full-screen apps) doesn't erase the
+      # highlight out from under an in-progress copy.
+      reapply_selection
+    end
+  end
+
+  # Resume rendering and repaint the whole current screen at once - the
+  # jump-scroll "catch up", skipping every frame that scrolled past while
+  # suspended.
+  def jump_redraw
+    @buffer.suspend = false
+    redraw
   end
 
   # Request a redraw (from the event thread). Records the latest pending
