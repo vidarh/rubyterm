@@ -22,8 +22,12 @@
       return nil if !str || str.empty?
       last = str.length-1
 
-      if str[-1].ord > 0x80
-        # -1 is part of a multibyte sequence
+      if str[-1].ord >= 0x80
+        # -1 is part of a multibyte sequence (a continuation byte 0x80-0xBF
+        # or a lead byte 0xC0+). NB: this must be >= 0x80, not > 0x80 - a
+        # trailing 0x80 is the second byte of e.g. an em-dash (E2 80 94)
+        # split across a pty read; treating it as complete dropped the
+        # lead bytes and orphaned the final byte into the next chunk.
         if str.length == 1
           # Single byte that starts a multibyte sequence
             last = -2  # Process nothing, save everything

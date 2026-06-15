@@ -23,8 +23,9 @@ class Controller
         begin
           @term.write(self.read)
           Thread.pass
-        rescue Errno::EIO => e
-          p e
+        rescue Errno::EIO
+          # The child closed the pty (it exited): EIO on read is normal
+          # here. Exit with the child's status.
           # FIXME: Not sure if this really belongs *here*?
           exit(Process.wait(@pid))
         end

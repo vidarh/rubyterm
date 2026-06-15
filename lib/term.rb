@@ -170,7 +170,7 @@ class Term
     when 1 then clear_to_start
     when 2 then clear_line
     else
-      p @esc
+      unhandled(:erase_in_line, ps)
     end
   end
 
@@ -282,7 +282,7 @@ class Term
       when 49;      @bg = BG
       when 53;      @mode |= OVERLINE
       when 55;      @mode &= ~OVERLINE
-      else return p [:set_modes, c, codes]
+      else return unhandled(:sgr, c)
       end
     end
   end
@@ -526,7 +526,7 @@ class Term
       when 6
         yield(:report_position) if block_given?
       else
-        p @esc
+        unhandled(:dsr, args)
       end
     when "r"
       @buffer.scroll_start = (args[0] || 1)-1
@@ -536,7 +536,7 @@ class Term
       @x = 0
       @y = origin
     else
-      p @esc
+      unhandled(:csi, s)
     end
     nil
   end
@@ -552,13 +552,13 @@ class Term
   def feed(str)
     @decoder << str
     @decoder.each do |c|
-      begin
-        putchar(c.ord)
-      rescue Exception => e
-        p [c, e, @decoder]
-        p e.backtrace
-        putchar(32)
-      end
+      # An invalid byte (binary data, or a sequence the decoder could not
+      # complete) renders as U+FFFD rather than raising. The rescue is a
+      # last-resort guard so a single bad character can't take down the
+      # input thread; it stays silent (no debug output to the pane/stderr).
+      putchar(c.valid_encoding? ? c.ord : 0xFFFD)
+    rescue StandardError
+      putchar(0xFFFD)
     end
   end
   alias write feed
@@ -623,7 +623,7 @@ class Term
       sx, sy, sgl, sgr, sg = @saved || [0, 0, 0, nil, [DefaultCharset, nil, nil, nil]]
       @x, @y, @gl, @gr, @g = sx, sy, sgl, sgr, sg
     else
-      p @esc
+      unhandled(:escape, s)
     end
 
     @esc = nil
@@ -632,7 +632,7 @@ class Term
   def handle_control(ch)
     case ch
     when 1,2;
-    when 7; p :bell
+    when 7; unhandled(:bell)
     when 8;
       # Backspace. From the pending-wrap state (cursor parked past the last
       # column after printing there) BS clears the pending wrap and stays on
@@ -663,6 +663,15 @@ class Term
 
   private
 
+  # Observability seam for input the terminal does not (yet) implement:
+  # unknown escape/control sequences, SGR parameters, query types. A no-op
+  # in production - it is deliberately SILENT (programs constantly emit
+  # things we don't handle, e.g. OSC title sets and bright-colour SGR;
+  # printing them spewed debug noise to stderr). The harness overrides this
+  # to collect what real programs use that we don't support yet.
+  def unhandled(kind, detail = nil)
+  end
+
   # Dispatch a terminal query reply request (yielded by handle_csi)
   # to the responder, if one is attached.
   def respond(op)
@@ -673,7 +682,7 @@ class Term
     when :device_attr_secondary  then @responder.device_attr_secondary
     when :device_attr_tertiary   then @responder.device_attr_tertiary
     else
-      p [:respond_unknown, op]
+      unhandled(:respond, op)
     end
   end
 
