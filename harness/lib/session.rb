@@ -36,7 +36,7 @@ module Harness
       @termbuffer = TermBuffer.new
       @buffer = TrackChanges.new(@termbuffer, @adapter)
       @buffer.defer = true # damage-driven rendering (mirrors the live terminal)
-      @term = Term.new(@buffer, @adapter)
+      @term = Term.new(@buffer)
       @term.resize(cols, rows)
       @buffer.on_resize(cols, rows)
       @term.responder = self

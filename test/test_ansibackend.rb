@@ -36,7 +36,7 @@ class TestAnsiBackend < Minitest::Test
   def build(adapter)
     buffer = TermBuffer.new
     tc = TrackChanges.new(buffer, adapter)
-    term = Term.new(tc, adapter)
+    term = Term.new(tc)
     term.resize(COLS, ROWS)
     tc.on_resize(COLS, ROWS)
     [term, tc, buffer]

@@ -100,7 +100,7 @@ def build_terminal(cols, rows, sink: :null)
     else abort "unknown sink: #{sink}"
     end
   tc   = TrackChanges.new(buffer, adapter)
-  term = Term.new(tc, adapter)
+  term = Term.new(tc)
   term.resize(cols, rows)
   tc.on_resize(cols, rows)
   term

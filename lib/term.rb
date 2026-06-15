@@ -2,32 +2,19 @@ require_relative 'escapeparser'
 require_relative 'utf8decoder'
 require_relative 'charsets'
 
-# This class is a start of untangling/extracting the *display* side
-# of RubyTerm from everything else. Currently it still indirectly
-# (via `adapter` in particular, but also via the `buffer`, which in
-# reality is a an instances of TrackChanges) depends on the X11
-# integration, but the next step is to allow this class to function
-# with just a buffer with damage tracking so that it is possible to
-# use it to render *either* to a terminal (which doesn't make much
-# sense for the terminal directly, but would for other applications,
-# or e.g. terminal multiplexers) or to an X11 window.
+# The escape/control interpreter: it turns a byte stream into operations on
+# a buffer, and knows *nothing* about X11, windows, or how its buffer is
+# rendered. It talks only to its buffer (a TrackChanges, which owns the
+# render backend). The same interpreter therefore drives a terminal that
+# renders to an X11 window or to a terminal (AnsiBackend), or for a
+# multiplexer / TUI library, depending only on the backend behind the
+# buffer.
 #
-# Ideally, in the longer-term, it should also be possible to assign
-# a Term instance to e.g. $stdout and optionally $stdin and have
-# your application open a window.
-#
-# This class should know *nothing* about X11 or windows, and should
-# ideally not use the `@adapter` (eventually, the "adapter" should
-# be removed/combined with `TrackChanges` and the whole thing overhauled)
-#
-# Decoupling this will also eventually make the terminal a lot more
-# testable.
-#
+# (The `CURSOR` overlay constant below is the last display-ish detail still
+# here; making the cursor a first-class buffer overlay is the remaining
+# step - see docs/architecture-review.md Phase 4.)
 class Term
   CURSOR = 0xff00ff
-
-  def char_w  = @adapter.char_w
-  def char_h  = @adapter.char_h
 
   attr_accessor :x, :y, :wraparound, :cursor, :origin_mode,
     :mouse_mode, :mouse_reporting, :tabs, :esc, :mode, :mouse_buttons
@@ -39,16 +26,16 @@ class Term
   # pty); in the test harness it is a Session capturing responses.
   attr_accessor :responder
 
-  def initialize(buffer, adapter)
+  def initialize(buffer)
     @buffer = buffer
-    @adapter = adapter # FIXME: Untangle
 
     # FIXME: I should consider whether to change origin to match the terminal handling
     # as it might be easier.
     @x = 0; @y = 0
 
-    @term_width  = (400 / char_w).to_i
-    @term_height = (400 / char_h).to_i
+    # Initial size only; the host resizes to the real geometry before use.
+    @term_width  = 80
+    @term_height = 24
 
     @tabs = 40.times.map {|i| i * 8}
 
@@ -129,8 +116,7 @@ class Term
   def clear_screen
     @buffer.scroll_start = nil
     @buffer.scroll_end   = nil
-    @buffer.clear
-    @adapter.clear unless @adapter.scrollback_mode
+    @buffer.clear   # the buffer (TrackChanges) also clears the backend
   end
 
   # RIS - Reset to Initial State (ESC c). Full reset: restore margins,
@@ -214,20 +200,10 @@ class Term
   end
 
   def scroll_up(num=1)
-    num.times do
-      @buffer.draw_flush
-      @buffer.scroll_up
-      if @adapter.scrollback_mode
-        # Scrolled back: don't paint, but anchor the viewport so the line
-        # that just entered history keeps the same lines on screen.
-        @adapter.scrollback_anchor
-      else
-        # WindowAdapter treats the second argument as the inclusive last row
-        # of the scrolling region; when unset the region ends at height-1.
-        @adapter.scroll_up(@buffer.scroll_start.to_i,
-                           @buffer.scroll_end || height - 1)
-      end
-    end
+    # The buffer (TrackChanges) drives the backend scroll - the blit and the
+    # scrolled-back-view handling are rendering concerns, not interpreter
+    # ones.
+    num.times { @buffer.scroll_up }
   end
 
   def scroll_if_needed
@@ -309,14 +285,14 @@ class Term
   def clear_cursor
     # Don't touch the screen while scrolled back; the live cursor must not
     # paint over the scrolled-back view.
-    return if @adapter.scrollback_mode
+    return if @buffer.scrollback_mode
     return if !@cursor_pos
     @buffer.redraw(*@cursor_pos)
     @cursor_pos = nil
   end
 
   def draw_cursor
-    return if @adapter.scrollback_mode
+    return if @buffer.scrollback_mode
     # If the old cursor is still on screen,
     # we clear it. Note that this does not take into account
     # scrolling at present, so you can't *rely* on it.
@@ -363,7 +339,7 @@ class Term
     # realise the column change - by rescaling the font or resizing the
     # window (RubyTerm#set_columns); a no-op in the headless harness.
     resize(w, height)
-    @adapter.set_columns(w)
+    @buffer.set_columns(w)
     clear_screen
   end
 

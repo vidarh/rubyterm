@@ -106,7 +106,7 @@ class RubyTerm
 
     @buffer = TrackChanges.new(TermBuffer.new, @adapter)
     @buffer.defer = true # damage-driven rendering: set() mutates, flush draws
-    @term = Term.new(@buffer, @adapter)
+    @term = Term.new(@buffer)
     @buffer.on_resize(@term.width, @term.height)
 
     # Give window access to the buffer for scrollback

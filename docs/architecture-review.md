@@ -570,12 +570,19 @@ rewrite. Stop points are marked — partial adoption still pays off.
 > **Value if you stop here:** rterm is cleanly Screen + Backend; the
 > divergence bug class is gone; the adapter is a real backend.
 
-### Phase 4 — Cut `Term`'s pixel coupling
-- Remove `@adapter` from `Term`. `CURSOR` → a `Screen` cursor overlay;
-  `set_columns` → `Screen#resize` + a Host DECCOLM policy;
-  `scrollback_mode`/`scroll_up`-to-adapter → `Screen`/Host concerns.
-- `Term` now constructs with only a `Screen`; the harness can test the
-  interpreter with **zero** backend.
+### Phase 4 — Cut `Term`'s adapter coupling (done, minus the cursor overlay)
+- **Done.** `Term` no longer references `@adapter` at all and constructs
+  with **only a buffer** (`Term.new(buffer)`). The scroll blit +
+  scrolled-back handling moved into `TrackChanges#scroll_up`;
+  `set_columns`/`scrollback_mode` now route through the buffer
+  (`@buffer.set_columns`/`@buffer.scrollback_mode`); the redundant
+  `@adapter.clear` and the `char_w`/`char_h` delegation (only used for an
+  initial size guess) were removed. Ratchet + tests green.
+- **Still here:** the `CURSOR` pixel constant and cursor drawing. Making
+  the cursor a first-class buffer **overlay** (so every backend renders it
+  and the AnsiBackend's CURSOR-cell recognition goes away) is entangled
+  with the harness's cursor-as-cell markers model, so it's its own careful
+  step. DECCOLM policy (font rescale on `reset`) is a separate TODO.
 
 ### Phase 5 — Write `AnsiBackend` (done, ahead of Phase 3)
 **Done** (`lib/ansibackend.rb`), and deliberately landed *before* the

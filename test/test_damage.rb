@@ -37,7 +37,7 @@ class TestDamage < Minitest::Test
     buffer = TermBuffer.new
     tc = TrackChanges.new(buffer, adapter)
     tc.defer = defer
-    term = Term.new(tc, adapter)
+    term = Term.new(tc)
     term.resize(COLS, ROWS)
     tc.on_resize(COLS, ROWS)
     [term, tc, buffer]

@@ -10,6 +10,7 @@ class TrackChanges
     # the damage-driven path is validated against it; see test_damage.rb.
     @defer = false
     @last_flush_gen = 0
+    @rows = 24      # overwritten by on_resize before use
     clear
   end
 
@@ -31,14 +32,30 @@ class TrackChanges
   def scroll_start  = @buffer.scroll_start
   def scroll_end    = @buffer.scroll_end
   def blinky        = @buffer.blinky
+  # Backend-facing queries the interpreter routes through the buffer rather
+  # than reaching the adapter directly (so Term talks only to its buffer).
+  def scrollback_mode = @adapter.scrollback_mode
+  def set_columns(cols) = @adapter.set_columns(cols)
   def each_character(scrollback_offset = 0, &block)
     @buffer.each_character(scrollback_offset, &block)
   end
 
   # # Mutation
   #
+  # Scroll the region up one line: draw pending damage, scroll the model,
+  # then drive the backend - a blit, or (when scrolled back) just anchor the
+  # viewport so the frozen history lines stay in place. The blit's inclusive
+  # bottom row is the scroll region's, or the last screen row when unset.
   def scroll_up
+    draw_flush
+    start  = @buffer.scroll_start.to_i
+    bottom = @buffer.scroll_end || (@rows - 1)
     @buffer.scroll_up
+    if @adapter.scrollback_mode
+      @adapter.scrollback_anchor
+    else
+      @adapter.scroll_up(start, bottom)
+    end
   end
 
   def delete_lines(y, num, maxy)
@@ -81,6 +98,7 @@ class TrackChanges
 
   def on_resize(w,h)
     raise if !h
+    @rows = h   # used as the default scroll-region bottom in scroll_up
     # FIXME: Window is currently resized separately.
     @buffer.on_resize(w,h)
   end
