@@ -675,12 +675,36 @@ both axes:
 >   - Opt-in (suspend defaults off): ratchet clean (55, 0 regressions),
 >     `rake test` green (95).
 >
-> **Still open on the Ctrl-C / time-to-stop axis.** Jump-scrolling already
-> helps it (not rendering the backlog lets the processing thread drain the
-> queue far faster, so output stops sooner after the source does), but it is
-> not yet *measured* as a time-to-stop number, and the read-ahead backlog is
-> not explicitly bounded. An X11-inclusive drain-time benchmark is still a
-> TODO.
+> **Measured — Ctrl-C / time-to-stop axis (live pty + threads, headless X).**
+> Traced the input backlog and flood consume-rate on the real terminal (via
+> a `queue_size` probe on the debug socket and flood-progress sampling).
+> Findings:
+>   - **The input queue does NOT grow unboundedly.** During a 1.6 MB `cat`
+>     flood `@queue` stayed at 0–2 (peak 9). The kernel pty buffer flow-
+>     controls the source: `cat` blocks once the ~64 KB pty buffer fills, so
+>     the post-Ctrl-C backlog is bounded (~64 KB) by the OS, not by us.
+>     **Explicit Ruby-side backpressure is therefore unnecessary** — the
+>     earlier "bound `@queue`" idea was solving a non-problem.
+>   - **On X11, jump-scrolling is ~neutral for a `cat` flood.** Flood
+>     duration was ~18 s for 1.6 MB whether jump-scroll was off, default
+>     (JB=8, which barely engages since the queue never backs up), or
+>     forced aggressive (JB=1: 18.6 s). Because the slow consumer paces the
+>     producer, the queue never backs up, and — more fundamentally —
+>     rendering is not the X11 bottleneck.
+>   - **Interpretation is the throughput ceiling, not rendering.** The
+>     `null` benchmark sink (interpret + buffer + draw-batch, *zero*
+>     rendering) tops out at ~0.2 MB/s — the same order as the live X11
+>     flood. So X11 time-to-stop ≈ bounded_backlog / interpret_rate ≈
+>     64 KB / 0.2 MB/s ≈ 0.3 s, and is governed by the **interpreter**
+>     (`Term#feed`, the escape/UTF-8 parsers, `TermBuffer#set`), not the
+>     renderer.
+>
+> **Conclusion / next lever.** Jump-scrolling's payoff is real but specific:
+> backends where *rendering* dominates (the glyph rasteriser: ~1100×). For
+> X11 throughput AND time-to-stop the remaining lever is the **interpreter
+> hot path** — profile it (`stackprof`) and attack the ~0.2 MB/s ceiling
+> (per-byte parser dispatch, UTF-8 decode, `set` packing). That is the
+> natural continuation of this axis.
 
 **Sequencing note.** Phases 2–4 deliver rterm value without touching
 `re`. Phase 5 delivers the text backend. Phase 6 is the `re` payoff.

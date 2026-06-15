@@ -61,6 +61,12 @@ module Harness
       case req["cmd"]
       when "dump_state"
         sync { StateDump.dump(term, buffer) }
+      when "queue_size"
+        # Direct read of the input backlog (thread-safe Queue#size); NOT
+        # serialized through sync, so it samples the live depth without
+        # waiting behind the flood it's measuring.
+        q = @rterm.instance_variable_get(:@queue)
+        { "queue_size" => (q ? q.size : -1) }
       when "render_barrier"
         sync do
           buffer.draw_flush
