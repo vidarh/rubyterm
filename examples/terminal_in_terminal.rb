@@ -44,7 +44,7 @@ TOP  = 3                                   # real rows above the sub-terminal
 buffer  = TermBuffer.new
 backend = AnsiBackend.new(COLS, ROWS, origin_row: TOP, origin_col: 0)
 tc      = TrackChanges.new(buffer, backend)
-term    = Term.new(tc, backend)
+term    = Term.new(tc)   # the backend is wired through TrackChanges
 term.resize(COLS, ROWS)
 tc.on_resize(COLS, ROWS)
 
