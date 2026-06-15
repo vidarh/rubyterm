@@ -130,3 +130,43 @@ function — it's the highest-risk correctness surface.
 Step 1 (engine-only require) is a safe, additive rubyterm change and the
 prerequisite for everything else. Do that, then build the shim + tests
 (steps 2–3) before any change to `re`'s runtime behaviour.
+
+## Status / results (AnsiBackend path)
+
+Steps 1–4 done; `re` renders through rubyterm's core behind a flag.
+
+- **Step 1 (rubyterm):** `lib/rubyterm/engine.rb` — engine-only require, no
+  X11/skrift. Done.
+- **Step 2 (re copy):** `rubyterm` added to `re`'s Gemfile (path gem;
+  skrift/skrift-x11 git + global local-overrides). Done.
+- **Step 3 (shim + test):** `re/lib/re/rubyterm_screen.rb` —
+  `RubytermScreen < AnsiTerm::Buffer`, overriding only `#to_s` (render the
+  rows into a persistent `TermBuffer`, emit via `AnsiBackend`). The only
+  new logic is the Attr→(fg,bg,flags) map (Integer/String/Array SGR forms,
+  palette-256, truecolor, BOLD brightens basic/default fg by +8).
+  Metamorphic test (`re/tmp/shim_metamorphic.rb`) — colours, bold, palette,
+  truecolor, `set_attr`, `merge_attr_below`, scroll all match AnsiTerm; the
+  shim additionally **fixes** an AnsiTerm `to_str` bug (fg not reset after
+  `\e[0m` when a bg is set → colour bleed).
+- **Step 4 (wire behind flag):** `View#@out` uses `RubytermScreen` when
+  `RE_RUBYTERM=1`, else `AnsiTerm::Buffer` (default unchanged). Live test
+  (`re/tmp/live_compare.rb`: runs `re` both ways in a pty, interprets each
+  output through `Term`, compares full cells) — runs without crashing and
+  renders **identically** (char+fg+bg+flags) for `re.rb`, `view.rb`,
+  `ansi.rb`. `help.md` differs in **one** right-edge highlight cell (a
+  `set_attr`-boundary bg edge case).
+
+### Open follow-ups
+
+1. **The 1-cell `set_attr`-boundary bg diff** on markdown — minor cosmetic,
+   in the intricate boundary handling; track down or accept.
+2. **Output size / latency:** the shim emits ~70 % more bytes on a *full*
+   redraw (AnsiBackend writes truecolor everywhere + CUP per run vs
+   AnsiTerm's per-row minimal-SGR diff). Incremental (typing) updates are
+   damage-based and may be competitive; **measure interactive redraw**
+   before defaulting it on.
+3. **Default on / retire ansiterm** once 1–2 are comfortable; keep
+   `ansiterm` vendored as a fallback.
+4. **Later:** simplify `re`'s view to the cell API directly (the author's
+   own FIXMEs), and add the **`-x11` flag** so `re` can open its own X11
+   window via rubyterm's `Window` backend (run without a host terminal).
