@@ -52,7 +52,9 @@ tc.on_resize(COLS, ROWS)
 ENV["TERM"] = "rxvt-256color"
 ARGV.shift if ARGV.first == "--"
 cmd = ARGV.empty? ? [ENV["SHELL"] || "/bin/sh"] : ARGV
-master, _wr, pid = PTY.spawn(*cmd)
+# PTY.spawn returns [reader, writer, pid]: read the child's output from
+# +master+, send the child's input to +child_in+.
+master, child_in, pid = PTY.spawn(*cmd)
 master.winsize = [ROWS, COLS]
 
 interactive = $stdin.tty?
@@ -107,7 +109,7 @@ if interactive
   $stdin.raw!
   writer = Thread.new do
     loop do
-      master.write($stdin.readpartial(4096))
+      child_in.write($stdin.readpartial(4096))
     rescue IO::EAGAINWaitReadable, Errno::EIO, EOFError
       break
     end
