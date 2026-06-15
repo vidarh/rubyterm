@@ -46,6 +46,14 @@ fontsize = 32
 
 shell="/home/vidarh/bin/rsh"
 
+# Initial window size in pixels. The terminal grid (columns x rows) is
+# derived from this and the font's cell size, so a bigger window opens a
+# bigger terminal. Omit either to use the default (1000 x 600, ~80x24 at
+# the default font). On a large display you might e.g. double them:
+#
+#width  = 2000
+#height = 1200
+
 # DECCOLM (the 80/132-column switch, ESC [ ? 3 h / l) is supported. Choose
 # how the column change is realised:
 #

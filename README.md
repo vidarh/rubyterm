@@ -57,12 +57,19 @@ For the full picture and the rationale behind the layering, see:
 
 ## Installation
 
-Dependencies are managed with Bundler; `skrift` and `skrift-x11` are
-developed alongside this project and are referenced as local path gems in
-the `Gemfile`.
+Dependencies are managed with Bundler.
 
 ```bash
 bundle install
+```
+
+`skrift` and `skrift-x11` are developed alongside this project and are
+pulled from git. To build against a local checkout instead of the pushed
+branch, set a per-machine local override (kept out of the repo):
+
+```bash
+bundle config set --global local.skrift     /path/to/skrift
+bundle config set --global local.skrift-x11 /path/to/skrift-x11
 ```
 
 ## Running
@@ -89,6 +96,10 @@ file is absent, defaults are used.
   (`"~/fonts/MyFont.ttf"`), a file in `~/.local/share/fonts/`, or a name
   resolved via `fc-match` (`"monospace"`, `"monospace:weight=bold"`).
 - **`fontsize`** — font size in points (e.g. `fontsize = 24`).
+- **`width`** / **`height`** — initial window size in pixels; the terminal
+  grid is derived from it and the font cell size. Defaults to `1000 x 600`
+  (~80×24 at the default font); on a big display, e.g. `width = 2000` /
+  `height = 1200`.
 - **`deccolm`** — how the 80/132-column DECCOLM switch is realised:
   `"font"` (rescale the glyph cell, the default) or `"window"` (ask the WM
   to resize).

@@ -47,7 +47,8 @@ class RubyTerm
     # :window asks the WM to resize the window. Default :font.
     @deccolm_mode = (@config[:deccolm] || "font").to_s.to_sym
 
-    @window = Window.new(fonts: @config[:fonts], fontsize: @config[:fontsize])
+    @window = Window.new(fonts: @config[:fonts], fontsize: @config[:fontsize],
+                         width: @config[:width], height: @config[:height])
     @adapter = WindowAdapter.new(@window, self)
 
     # Yes, this is "bad" and we should define our

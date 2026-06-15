@@ -114,7 +114,12 @@ class Window
 
     @visual = @dpy.find_visual(0, 32).visual_id
 
-    @width, @height = 1000, 600
+    # Initial window size in pixels. The terminal grid (cols x rows) is
+    # derived from this by the configure/resize path, so a larger window
+    # opens a larger terminal. Configurable via the `width`/`height` config
+    # keys; defaults sized to roughly 80x24 at the default font.
+    @width  = (opts[:width]  || 1000).to_i
+    @height = (opts[:height] ||  600).to_i
 
     @wid = @dpy.create_window(
       0, 0, @width, @height,
