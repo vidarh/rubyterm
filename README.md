@@ -1,8 +1,9 @@
 # rubyterm
 
 A terminal emulator written **entirely in Ruby** — including a pure-Ruby
-X11 client to talk to the X server. There is no C extension and no libvte;
-the escape-sequence interpreter, the screen buffer, the rendering and the
+X11 client to talk to the X server and a pure-Ruby font renderer.
+
+There is no C extension and no libvte; the escape-sequence interpreter, the screen buffer, the rendering and the
 X11 protocol handling are all Ruby.
 
 It is still rough and opinionated, but it now runs as an installable gem
@@ -11,12 +12,17 @@ with a `rubyterm` executable, renders with a damage-driven pipeline
 split into a reusable terminal *engine* that can be driven without X11 at
 all.
 
-> **You probably don't want to depend on this yet.** Escape-code coverage
-> is partial (VT100/VT102 plus a useful chunk of xterm), font handling is
-> basic, and the keymap is limited. Full-screen apps mostly work; some will
+> **NOTE**: Escape-code coverage is partial (VT100/VT102 plus a useful chunk of xterm), font handling is
+> basic, and the keymap is limited. It is *slow*, though it is my main driver. Full-screen apps mostly work; some will
 > still misbehave. I have specific ideas about direction, so if you'd like
 > to contribute, **talk to me first** (vidar@hokstad.com) or fork — I won't
 > promise to merge changes we haven't discussed.
+
+## Screenshots of Ruby-in-Ruby-in-Ruby-...
+
+![Rubyterm](docs/2026-06-15_18-40_1.png)
+
+This shows Rubyterm running on my [Ruby based WM](https://github/vidarh/rubywm), running [Rubyterm with a text-based-backend](examples/) that renders a a terminal *to text* (so it can run in any terminal), running my [editor Re](https://github.com/vidarh/re) editing the Rubyterm example. The text is rendered using the pure-Ruby TrueType font renderer [Skrift](https://github.com/vidarh/re), and connected to my X11 server using the [Pure-X11](https://github.com/vidarh/ruby-x11) Ruby X11 bindings (no libX or XCB, just pure Ruby socket code).
 
 ## Architecture
 
