@@ -8,7 +8,31 @@
 
     def <<(str) = @buffer << str.b
 
+    # Yields each complete character as a String (the original contract).
     def each(&block)
+      decode { |complete| complete.each_char(&block) }
+    end
+
+    # Yields each complete character as an Integer codepoint. The hot path
+    # (Term#feed) wants codepoints, not 1-char Strings: on a valid chunk
+    # String#each_codepoint avoids allocating a String per character and the
+    # per-character valid_encoding?/ord that #feed used to do. Validity is
+    # checked once per chunk; only a chunk that actually contains bad bytes
+    # falls back to the slower per-character path (rendering them as U+FFFD).
+    def each_codepoint(&block)
+      decode do |complete|
+        if complete.valid_encoding?
+          complete.each_codepoint(&block)
+        else
+          complete.each_char { |c| block.call(c.valid_encoding? ? c.ord : 0xFFFD) }
+        end
+      end
+    end
+
+    # Split @buffer into a complete-sequence prefix and a saved leftover,
+    # then yield the prefix (encoding-tagged) to the caller's per-character
+    # iterator.
+    private def decode
       # We acknowledge that @buffer can contain
       # sequences that are invalid UTF8, and we will
       # do our best with them *unless*:
@@ -44,8 +68,8 @@
         end
       end
       @leftover = str[last+1..-1].b
-      @buffer = str[0..last].force_encoding("UTF-8")
-      @buffer.each_char(&block)
+      complete = str[0..last].force_encoding("UTF-8")
+      yield complete
       @buffer = @leftover
     end
 

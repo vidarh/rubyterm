@@ -519,15 +519,13 @@ class Term
   # until #draw_flush is called on the buffer).
   def feed(str)
     @decoder << str
-    @decoder.each do |c|
-      # An invalid byte (binary data, or a sequence the decoder could not
-      # complete) renders as U+FFFD rather than raising. The rescue is a
-      # last-resort guard so a single bad character can't take down the
-      # input thread; it stays silent (no debug output to the pane/stderr).
-      putchar(c.valid_encoding? ? c.ord : 0xFFFD)
-    rescue StandardError
-      putchar(0xFFFD)
-    end
+    # each_codepoint yields Integer codepoints directly (the decoder already
+    # maps bytes it can't decode to U+FFFD), so the hot path allocates no
+    # per-character String and does no per-character valid_encoding?/ord.
+    @decoder.each_codepoint { |cp| putchar(cp) }
+  rescue StandardError
+    # Last-resort guard so a malformed sequence can't take down the input
+    # thread; stays silent (no debug output to the pane/stderr).
   end
   alias write feed
 
