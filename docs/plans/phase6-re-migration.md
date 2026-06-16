@@ -238,3 +238,42 @@ FIXMEs). Not yet done.
 Debug harness `RE_X11_TIME=1` (EV/RENDER/TIME lines to stderr) is still
 present in `editor.rb`/`x11.rb`/`rubyterm_screen.rb` - env-gated; strip
 before merging the migration back to the canonical `re`.
+
+### `-x11` redraw-after-resize (fixed)
+
+Reported: the window occasionally didn't repaint after a resize (^L fixed
+it). Cause: `resize_window`/`zoom` blank the whole back buffer
+(`@window.clear`), but the following render only rebuilds the screen
+backend when the *char grid* (cols x rows) changes. A sub-cell pixel
+resize - common while dragging - leaves the grid unchanged, so the damage
+tracker sees no changed cells and draws nothing over the cleared buffer ->
+blank until ^L (which calls `@out.reset`). Fix: `View#invalidate`
+(delegates to `@out.reset`, rebuilding the backend so all content is
+treated as new) is called after the resize/zoom clear (commit `60455e6`).
+Verified: an unchanged-content repaint emits 0 bytes, but the full content
+again after `invalidate`.
+
+### `-x11` per-frame allocation / GC tail (partly addressed)
+
+The occasional ~46-65ms render spikes are GC: re rebuilds every visible row
+each frame, allocating ~73k objects/frame on a large (4K) window. Minor GC
+fires ~once/frame; the worst spikes coincide with major GC. Breakdown by
+phase: rowbuild ~60k, flush ~12k, overlays/moderender/setup negligible.
+
+Transient-allocation trace (GC disabled during one render): ~44k Strings +
+16k Hashes, concentrated in `AnsiTerm::String#parse` and `Attr#to_h`/`merge`
+- i.e. re-parsing escape-laden strings and per-cell Attr churn.
+
+Fixed so far: the **line-number gutter** was re-parsed
+(`AnsiTerm::String.new(lf % n)`) for every row every frame; now memoised by
+(current-line?, n). ~73k -> ~54k allocations/frame (-26%), median render
+20ms -> 17ms, screenshot-verified (commit `7c82723`).
+
+Remaining ~54k/frame is content-row build (`line[range]` slice, `pad`,
+`set_attr`) + the flush. Cutting it further needs the "render only changed
+rows" rework the `View` header comment already lists as a TODO (re rebuilds
+all rows after `@out.cls` even though a cursor move changes ~2-3). That's a
+View-layer refactor with overlay/scroll/blank-row correctness risk - best
+done with bitmap-diff verification across scenarios and the author present.
+Note: the `RubytermScreen#render_into_buffer` row cache already skips
+*redrawing* unchanged rows, so this is purely re's wasted build work.
