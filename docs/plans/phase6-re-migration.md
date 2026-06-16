@@ -269,11 +269,29 @@ Fixed so far: the **line-number gutter** was re-parsed
 (current-line?, n). ~73k -> ~54k allocations/frame (-26%), median render
 20ms -> 17ms, screenshot-verified (commit `7c82723`).
 
-Remaining ~54k/frame is content-row build (`line[range]` slice, `pad`,
-`set_attr`) + the flush. Cutting it further needs the "render only changed
-rows" rework the `View` header comment already lists as a TODO (re rebuilds
-all rows after `@out.cls` even though a cursor move changes ~2-3). That's a
-View-layer refactor with overlay/scroll/blank-row correctness risk - best
-done with bitmap-diff verification across scenarios and the author present.
-Note: the `RubytermScreen#render_into_buffer` row cache already skips
-*redrawing* unchanged rows, so this is purely re's wasted build work.
+Then the content-row build itself was memoised (commit `6fdbf72`). The
+expensive per-row assembly downstream of ModeRender (tab expansion,
+search/match marks, `line[range]` truncation, padding) is extracted
+unchanged into `build_content_line` and cached by `content_line`, keyed on
+the row's full appearance (`line.to_str` = text + syntax incl. multiline
+state) plus `@xoff`, text width, `max_line_length`, the search string, and
+the mark/cursor column when on that row. Reuse is safe: `print` only reads
+the line (splices a copy into `@out`) and the overlay passes replace attrs
+rather than mutating them. The render structure (cls, row loop, overlay
+passes, status, flush) is untouched - only the build is cached - so the
+"rebuild from scratch" reading is preserved. Cache dropped on theme/mode
+change (`reset!`), capped at 2000 rows.
+
+Result on a real X server (4K window): **~73k -> ~13k allocations/frame
+(-82%), median render 20ms -> 5.5ms, worst-case 65ms -> 11ms - the GC tail
+is gone.** Screenshot-verified across vertical/horizontal cursor moves,
+in-line edits and scrolling (cursor, current-line highlight, syntax,
+line numbers all correct).
+
+The remaining ~13k/frame is the unavoidable per-frame work: `cls`, printing
+every row (cheap - `[]=` shares attr refs), the overlay passes
+(`render_background`/curline/cursor), and the screen's own `to_str` diff in
+`flush`. No longer GC-bound; further reduction would need skipping the
+print/overlay passes for unchanged rows (removing `cls`), which trades the
+current readable structure for stale-tail/blank-row correctness risk - not
+worth it now.
