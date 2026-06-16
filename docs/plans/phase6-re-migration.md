@@ -291,7 +291,31 @@ line numbers all correct).
 The remaining ~13k/frame is the unavoidable per-frame work: `cls`, printing
 every row (cheap - `[]=` shares attr refs), the overlay passes
 (`render_background`/curline/cursor), and the screen's own `to_str` diff in
-`flush`. No longer GC-bound; further reduction would need skipping the
-print/overlay passes for unchanged rows (removing `cls`), which trades the
-current readable structure for stale-tail/blank-row correctness risk - not
-worth it now.
+`flush`. No longer GC-bound for in-view cursor moves.
+
+### `-x11` large-window scroll stall + region scroll (fixed)
+
+Reported: on a big window, holding a cursor key **stalled** - the window
+froze (no re-render) for ~1s at a time. Instrumented: each *scroll* line
+redrew the whole screen, so `draw_flush` (glyph drawing) hit **71-104ms** and
+re blocked pushing ~13k X requests while the server throttled keypress
+delivery (`handle_input` blocked ~1s between single renders). In-view cursor
+moves were fine (2 rows, ~7ms); only viewport scrolling was affected.
+
+Fix (commit `de924fd`): **region scroll.** `View#render` computes the scroll
+delta; when the viewport shifts a few lines and is full of content it calls
+`RubytermX11Screen#scroll`, which shifts the TermBuffer and blits the window
+pixmap in one CopyArea (`delete_lines`/`insert_lines` inside a temporary
+scroll region) and shifts the screen row cache in lockstep. The normal render
+then redraws only the newly-exposed rows + the old/new cursor rows + the
+status line; the rest hit the row cache. Big jumps and the ansiterm/terminal
+backends (no `#scroll`) fall back to the existing full redraw, so only the
+x11 path changes. Measured (1863x2054 window, holding Down): `draw_flush`
+**71-104ms -> 0.2ms**, no more freezes. Screenshot-verified scroll down,
+scroll up and in-view moves (content, cursor, highlight, syntax all correct).
+
+Also capped the content/gutter memos at 400 entries (was 2000/4000): with
+region scroll they only need the on-screen rows, and the smaller old-gen
+footprint cut the worst major-GC pause **~250ms -> ~150ms** (commit
+`5b5e229`). Residual: an occasional ~150ms major-GC stutter during sustained
+scrolling, mostly from ModeRender caching every line visited - out of scope.
