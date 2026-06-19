@@ -87,13 +87,16 @@ KEYMAP = {
   :f3 => "\e[13~",
   :f4 => "\e[14~",
   :f5 => "\e[15~",
-  :f6 => "\e[16~",
-  :f7 => "\e[17~",
-  :f8 => "\e[18~",
-  :f9 => "\e[19~",
-  :f10 => "\e[20~",
-  :f11 => "\e[21~",
-  :f12 => "\e[22~",
+  # VT220/xterm/rxvt skip codes 16, 22, 27, 30, ... so F6+ are not
+  # consecutive with F5. These must match the kf6..kf12 terminfo entries
+  # for TERM (rxvt-256color), or apps like htop won't recognise the keys.
+  :f6 => "\e[17~",
+  :f7 => "\e[18~",
+  :f8 => "\e[19~",
+  :f9 => "\e[20~",
+  :f10 => "\e[21~",
+  :f11 => "\e[23~",
+  :f12 => "\e[24~",
   :shift_up => "\e[1;2A",
   :shift_down => "\e[1;2B",
   :shift_tab => "\e[Z",
