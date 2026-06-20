@@ -523,7 +523,12 @@ class RubyTerm
     Thread.new do
       loop do
         pkt = @window.dpy.next_packet
-        process(pkt)
+        begin
+          process(pkt)
+        rescue => e
+          # One bad event must not kill the terminal (abort_on_exception is on).
+          warn("rubyterm: #{e.class}: #{e.message}") rescue nil
+        end
         Thread.pass
       end
     end
