@@ -19,17 +19,14 @@ class BitmapWindow
 
   def initialize(cols, rows, font: DEFAULT_FONT, size: 16,
                  fg: 0xcccccc, bg: 0x000000)
-    @font = Font.load(font)
-    @sft = SFT.new(@font)
-    @sft.x_scale = size
-    @sft.y_scale = size
-    lm = @sft.lmetrics
-    @char_h   = (lm.ascender - lm.descender + lm.line_gap).ceil
-    @baseline = lm.ascender.round
-    @char_w   = @sft.gmetrics(@sft.lookup("M".ord)).advance_width.round
+    # The glyph pipeline (rasterise + cache + metrics) now lives in
+    # skrift's GlyphCache; this backend only composites the alpha it returns.
+    @cache    = Skrift::GlyphCache.new(font, x_scale: size, y_scale: size)
+    @char_w   = @cache.cell_width
+    @char_h   = @cache.cell_height
+    @baseline = @cache.baseline
     @cols, @rows = cols, rows
     @fg, @bg = fg, bg
-    @glyphs = {}
     resize(cols * @char_w, rows * @char_h)
   end
 
@@ -126,10 +123,11 @@ class BitmapWindow
   end
 
   def blit_glyph(codepoint, cx, cy, fg)
-    alpha, gw, gh, lsb, yoff = glyph(codepoint)
-    return unless alpha
-    gx = cx + lsb
-    gy = cy + @baseline - yoff
+    g = @cache.glyph(codepoint)
+    return unless g&.alpha
+    alpha, gw, gh = g.alpha, g.width, g.height
+    gx = cx + g.left_side_bearing
+    gy = cy + @baseline - g.y_offset
     gh.times do |row|
       py = gy + row
       next if py < 0 || py >= @height
@@ -153,24 +151,5 @@ class BitmapWindow
     g = ((fg >> 8 & 0xff) * a + (dst >> 8 & 0xff) * ia) / 255
     b = ((fg & 0xff) * a + (dst & 0xff) * ia) / 255
     (r << 16) | (g << 8) | b
-  end
-
-  # [alpha_bytes, width, height, left_bearing, y_offset] for a codepoint,
-  # cached; or [nil] if it has no outline (e.g. space).
-  def glyph(codepoint)
-    @glyphs[codepoint] ||= begin
-      gid = @sft.lookup(codepoint)
-      m = gid && @sft.gmetrics(gid)
-      if m.nil? || m.min_width.nil? || m.min_height.nil?
-        [nil]
-      else
-        img = Image.new((m.min_width + 3) & ~3, m.min_height)
-        if @sft.render(gid, img) && img.pixels
-          [img.pixels, img.width, img.height, m.left_side_bearing.round, m.y_offset]
-        else
-          [nil]
-        end
-      end
-    end
   end
 end
