@@ -382,6 +382,25 @@ class RubyTerm
 
   def redraw_positions(positions) = positions.each { |pos| @buffer.redraw(*pos) }
 
+  # The selection's [start, end] boundary pairs, expanded so a double-width
+  # glyph is always whole: if the first selected cell is a WIDE_SPACER tail,
+  # include its head; if the last selected cell is a wide head, include its
+  # tail. So clipping a selection to either half of an emoji still selects the
+  # whole emoji. Returns the raw pair unchanged when there is no selection.
+  def selection_bounds
+    s, e = @select_startpos, @select_endpos
+    return [s, e] unless s && e
+    lo, hi = [s, e].sort_by { |x, y| [y, x] }
+    # Boundaries -> inclusive cell range: a selection from boundary lo to hi
+    # covers cells [lo .. hi-1].
+    hi = [hi[0] - 1, hi[1]]
+    c = @buffer.get(lo[0], lo[1])
+    lo = [lo[0] - 1, lo[1]] if lo[0] > 0 && c && c[0] == CharWidth::WIDE_SPACER
+    last = @buffer.get(hi[0], hi[1])
+    hi = [hi[0] + 1, hi[1]] if last && last[0] && CharWidth.width(last[0]) == 2
+    [lo, hi]
+  end
+
   # Re-stamp the active selection highlight on top of freshly drawn
   # content. The selection is an overlay that is NOT stored in the buffer,
   # so any output - or a full redraw - that repaints those cells erases the
@@ -390,8 +409,10 @@ class RubyTerm
   # app), which a one-shot paint at mouse-time cannot do.
   def reapply_selection
     return unless @select_startpos && @select_endpos
+    return if @select_startpos == @select_endpos   # zero-width (click): nothing selected
     sb = @window.scrollback_count
-    @buffer.each_character_between(@select_startpos[0]..@select_startpos[1], @select_endpos[0]..@select_endpos[1]) do |x,y,cell|
+    spos, epos = selection_bounds
+    @buffer.each_character_between(spos[0]..spos[1], epos[0]..epos[1]) do |x,y,cell|
       sy = y + sb
       next if sy < 0 || sy >= @term.height
       @buffer.redraw_cell_at(x, sy, cell, fg: 0xffffff, bg: 0xff00ff)
@@ -408,11 +429,16 @@ class RubyTerm
     sb = @window.scrollback_count
     olddamage = @selection_damage || Set.new
     @selection_damage = Set.new
-    @buffer.each_character_between(@select_startpos[0]..@select_startpos[1], @select_endpos[0]..@select_endpos[1]) do |x,y,cell|
-      sy = y + sb
-      next if sy < 0 || sy >= @term.height
-      @selection_damage << [x,sy]
-      @buffer.redraw_cell_at(x, sy, cell, fg: 0xffffff, bg: 0xff00ff)
+    # A zero-width (click) selection highlights nothing, but still falls
+    # through to clear any previous highlight below.
+    unless @select_startpos == @select_endpos
+      spos, epos = selection_bounds
+      @buffer.each_character_between(spos[0]..spos[1], epos[0]..epos[1]) do |x,y,cell|
+        sy = y + sb
+        next if sy < 0 || sy >= @term.height
+        @selection_damage << [x,sy]
+        @buffer.redraw_cell_at(x, sy, cell, fg: 0xffffff, bg: 0xff00ff)
+      end
     end
     # Repaint cells that left the selection with their displayed content.
     (olddamage - @selection_damage).each { |x,sy| @buffer.redraw_display(x, sy, sb) }
@@ -421,8 +447,7 @@ class RubyTerm
   end
 
   def get_selection
-    startpos = @select_startpos
-    endpos   = @select_endpos
+    startpos, endpos = selection_bounds
     str = ""
     ypos = nil
     @buffer.each_character_between(startpos[0]..startpos[1], endpos[0]..endpos[1]) do |x,y,cell|
@@ -456,6 +481,11 @@ class RubyTerm
     shift = pkt.state.anybits?(0x01) # ShiftMask
     case shift ? nil : @term.mouse_mode
     when nil
+      # Selection coordinates are cell *boundaries* (round to the nearest
+      # column edge, not the floor cell), so dragging across a single cell
+      # selects exactly that cell and a click (no boundary crossed) selects
+      # none. Mouse reporting below keeps the floor cell index.
+      x = (pkt.event_x + char_w / 2) / char_w
       # Selection works in buffer coordinates: when scrolled back, the
       # row under the pointer is a scrollback line (buffer row
       # screen_y - scrollback_count, negative for scrollback). Without
