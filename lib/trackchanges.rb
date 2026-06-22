@@ -1,4 +1,6 @@
 
+require_relative 'charwidth'   # CharWidth.width / WIDE_SPACER
+
 # FIXME: Roll this into the actual buffer.
 class TrackChanges
   # The cursor is rendered as an overlay - a cell repainted with this
@@ -144,7 +146,28 @@ class TrackChanges
     draw_flush
   end
 
-  def redraw(x,y) = draw_buffered(x,y, @buffer.get(x,y), true)
+  # The screen-column span [x0,x1] of the glyph occupying (x, buffer_y). A
+  # double-width glyph is stored as [head, WIDE_SPACER tail]; redrawing either
+  # cell on its own leaves the other half stale (cursor move, blink, a
+  # single-cell damage update), so every redraw path expands to the whole
+  # glyph. cell[0] is an integer codepoint (or nil for an unset cell).
+  def glyph_span(x, buffer_y)
+    cell = @buffer.get(x, buffer_y)
+    cp   = cell && cell[0]
+    if cp == CharWidth::WIDE_SPACER && x > 0 &&
+       (h = @buffer.get(x - 1, buffer_y)) && h[0] && CharWidth.width(h[0]) == 2
+      [x - 1, x]
+    elsif cp && CharWidth.width(cp) == 2
+      [x, x + 1]
+    else
+      [x, x]
+    end
+  end
+
+  def redraw(x,y)
+    x0, x1 = glyph_span(x, y)
+    (x0..x1).each { |xx| draw_buffered(xx, y, @buffer.get(xx, y), true) }
+  end
 
   # Render the cursor overlay at (x,y) if +visible+, after restoring the
   # cell under its previous position. A no-op while scrolled back, so the
@@ -174,11 +197,14 @@ class TrackChanges
   end
 
   def redraw_with(x,y, fg: nil, bg: nil)
-    cell = Array(@buffer.get(x,y)).dup
-    cell[0] ||= " "
-    cell[1] = fg if fg
-    cell[2] = bg if bg
-    draw_buffered(x,y, cell, true)
+    x0, x1 = glyph_span(x, y)
+    (x0..x1).each do |xx|
+      cell = Array(@buffer.get(xx, y)).dup
+      cell[0] ||= " "
+      cell[1] = fg if fg
+      cell[2] = bg if bg
+      draw_buffered(xx, y, cell, true)
+    end
   end
 
   # Draw an already-resolved cell at a *screen* position, optionally
@@ -197,7 +223,8 @@ class TrackChanges
   # content rather than the live buffer's).
   def redraw_display(screen_x, screen_y, scrollback_offset = 0)
     buffer_y = screen_y - scrollback_offset
-    draw_buffered(screen_x, screen_y, @buffer.get(screen_x, buffer_y), true)
+    x0, x1 = glyph_span(screen_x, buffer_y)
+    (x0..x1).each { |xx| draw_buffered(xx, screen_y, @buffer.get(xx, buffer_y), true) }
   end
 
   # Public flush point. In the default (eager) mode draws already happened

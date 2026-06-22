@@ -428,7 +428,9 @@ class RubyTerm
     @buffer.each_character_between(startpos[0]..startpos[1], endpos[0]..endpos[1]) do |x,y,cell|
       str += "\n" if ypos && y != ypos
       ypos = y
-      str << (cell[0].chr(Encoding::UTF_8) rescue "")
+      cp = cell && cell[0]
+      next if cp == CharWidth::WIDE_SPACER   # tail of a double-width glyph: its head already emitted the char
+      str << (cp.chr(Encoding::UTF_8) rescue "")
     end
     str
   end
