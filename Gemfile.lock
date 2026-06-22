@@ -1,31 +1,35 @@
 GIT
+  remote: https://github.com/vidarh/skrift-boxdrawing.git
+  revision: e077893b3942e09ea533da49873cb12a02746ff1
+  branch: master
+  specs:
+    skrift-boxdrawing (0.1.0)
+      skrift (>= 0.3.0)
+
+GIT
+  remote: https://github.com/vidarh/skrift-color.git
+  revision: e077893b3942e09ea533da49873cb12a02746ff1
+  branch: master
+  specs:
+    skrift-color (0.1.0)
+      skrift (>= 0.3.0)
+
+GIT
   remote: https://github.com/vidarh/skrift-x11.git
-  revision: 622558e9087763a7856a8e3b27e52226fe5cc901
+  revision: e077893b3942e09ea533da49873cb12a02746ff1
   branch: master
   specs:
     skrift-x11 (0.2.2)
       pure-x11
       skrift (>= 0.3.0)
-      skrift-boxdrawing
+      skrift-boxdrawing (>= 0.1.0)
 
 GIT
   remote: https://github.com/vidarh/skrift.git
-  revision: a2ba0b8d863265456b2143542aa8828d1b0e1c37
+  revision: e077893b3942e09ea533da49873cb12a02746ff1
   branch: master
   specs:
-    skrift (0.3.0)
-
-PATH
-  remote: ../skrift-boxdrawing
-  specs:
-    skrift-boxdrawing (0.1.0)
-      skrift (>= 0.3.0)
-
-PATH
-  remote: ../skrift-color
-  specs:
-    skrift-color (0.1.0)
-      skrift (>= 0.3.0)
+    skrift (0.4.0)
 
 PATH
   remote: .
