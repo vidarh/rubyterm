@@ -78,6 +78,24 @@ task :promote do
   sh "make promote"
 end
 
+# Gem packaging — distinct from `rake build`, which builds the standalone
+# executable. Note: until skrift and its plugins are on RubyGems, a published
+# rubyterm gem can't resolve them, so publish those first.
+require_relative "lib/rubyterm/version"
+GEM_PKG = File.expand_path("pkg", __dir__)
+
+desc "Build the rubyterm gem into pkg/"
+task :gem do
+  require "fileutils"
+  FileUtils.mkdir_p(GEM_PKG)
+  sh "gem build rubyterm.gemspec -o #{GEM_PKG}/rubyterm-#{RubyTerm::VERSION}.gem"
+end
+
+desc "Build + push the rubyterm gem to RubyGems"
+task publish: :gem do
+  sh "gem push #{GEM_PKG}/rubyterm-#{RubyTerm::VERSION}.gem"
+end
+
 # Show available tasks
 desc "Show all available tasks"
 task :help do
@@ -88,6 +106,8 @@ task :help do
   puts "  rake debug         - Run in debug mode"
   puts "  rake build         - Build standalone executable"
   puts "  rake promote       - Install to ~/bin"
+  puts "  rake gem           - Build the rubyterm gem into pkg/"
+  puts "  rake publish       - Build + push the rubyterm gem to RubyGems"
   puts ""
   puts "Test components available:"
   puts "  - termbuffer"

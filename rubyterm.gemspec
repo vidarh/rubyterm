@@ -33,10 +33,12 @@ Gem::Specification.new do |spec|
   spec.executables   = ["rubyterm"]
   spec.require_paths = ["lib"]
 
-  # Runtime dependencies. skrift and skrift-x11 are currently developed
-  # alongside rubyterm; the Gemfile points them at local checkouts.
+  # Runtime dependencies. skrift, its X11 adapter and the colour-emoji plugin
+  # live in the skrift monorepo; until they're on RubyGems the Gemfile sources
+  # them from git (skrift-boxdrawing comes in transitively via skrift-x11).
   spec.add_dependency "pure-x11"
-  spec.add_dependency "skrift"
-  spec.add_dependency "skrift-x11"
+  spec.add_dependency "skrift",       ">= 0.4.0"
+  spec.add_dependency "skrift-x11",   ">= 0.3.0"
+  spec.add_dependency "skrift-color", ">= 0.1.0"
   spec.add_dependency "toml-rb"
 end
