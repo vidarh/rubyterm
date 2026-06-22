@@ -16,7 +16,7 @@ GIT
 PATH
   remote: .
   specs:
-    rubyterm (0.2.0)
+    rubyterm (0.2.1)
       pure-x11
       skrift (>= 0.4.0)
       skrift-color (>= 0.1.0)
