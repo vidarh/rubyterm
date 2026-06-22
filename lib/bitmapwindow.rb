@@ -1,5 +1,13 @@
 require 'skrift'
 require 'zlib'
+require_relative 'charwidth'
+
+# Colour-glyph (emoji) support is optional.
+begin
+  require 'skrift/color'
+rescue LoadError
+  # skrift-color not installed; emoji render monochrome (or as tofu).
+end
 
 # A third implementation of the drawing interface WindowAdapter targets
 # (alongside the X11 Window and the harness's VirtualWindow): it rasterises
@@ -15,21 +23,27 @@ require 'zlib'
 class BitmapWindow
   attr_reader :width, :height, :pixels
 
-  DEFAULT_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
+  DEFAULT_FONT  = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
+  DEFAULT_EMOJI = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
+
+  # Routes emoji codepoints to a colour renderer and leaves everything else to
+  # the monochrome path. The emoji? gate (Unicode classification) keeps text
+  # that a colour font happens to map — digits, '#', '*' — rendering as text.
+  ColourDelegate = Struct.new(:renderer) do
+    def render(cp) = CharWidth.emoji?(cp) ? renderer.render(cp) : nil
+  end
 
   def initialize(cols, rows, font: DEFAULT_FONT, size: 16,
-                 fg: 0xcccccc, bg: 0x000000)
-    @font = Font.load(font)
-    @sft = SFT.new(@font)
-    @sft.x_scale = size
-    @sft.y_scale = size
-    lm = @sft.lmetrics
-    @char_h   = (lm.ascender - lm.descender + lm.line_gap).ceil
-    @baseline = lm.ascender.round
-    @char_w   = @sft.gmetrics(@sft.lookup("M".ord)).advance_width.round
+                 fg: 0xcccccc, bg: 0x000000, emoji: DEFAULT_EMOJI)
+    # The glyph pipeline (rasterise + cache + metrics) lives in skrift's
+    # GlyphCache; colour emoji come from an optional colour delegate.
+    @cache    = Skrift::GlyphCache.new(font, x_scale: size, y_scale: size,
+                                       color: colour_delegate(emoji, size))
+    @char_w   = @cache.cell_width
+    @char_h   = @cache.cell_height
+    @baseline = @cache.baseline
     @cols, @rows = cols, rows
     @fg, @bg = fg, bg
-    @glyphs = {}
     resize(cols * @char_w, rows * @char_h)
   end
 
@@ -70,8 +84,9 @@ class BitmapWindow
   def draw(x, y, str, fg, bg, _lineattrs = nil)
     fillrect(x, y, str.length * @char_w, @char_h, bg)
     str.each_char.with_index do |ch, i|
-      next if ch == " "
-      blit_glyph(ch.ord, x + i * @char_w, y, fg)
+      cp = ch.ord
+      next if cp == 32 || cp == CharWidth::WIDE_SPACER # space / wide-glyph tail
+      blit_glyph(cp, x + i * @char_w, y, fg)
     end
   end
 
@@ -109,6 +124,12 @@ class BitmapWindow
 
   private
 
+  def colour_delegate(emoji, size)
+    return nil unless emoji && File.exist?(emoji) && defined?(Skrift::Color::Renderer)
+    cr = Skrift::Color::Renderer.new(Skrift::Font.load(emoji), x_scale: size, y_scale: size)
+    cr.color? ? ColourDelegate.new(cr) : nil
+  end
+
   def png_chunk(type, data)
     body = type.b + data.b
     [data.bytesize].pack("N") + body + [Zlib.crc32(body)].pack("N")
@@ -126,10 +147,20 @@ class BitmapWindow
   end
 
   def blit_glyph(codepoint, cx, cy, fg)
-    alpha, gw, gh, lsb, yoff = glyph(codepoint)
-    return unless alpha
-    gx = cx + lsb
-    gy = cy + @baseline - yoff
+    g = @cache.glyph(codepoint)
+    return unless g
+    if g.color?
+      blit_rgba(g, codepoint, cx, cy)
+    elsif g.alpha
+      blit_alpha(g, cx, cy, fg)
+    end
+  end
+
+  # Monochrome glyph: alpha mask tinted with the foreground colour.
+  def blit_alpha(g, cx, cy, fg)
+    alpha, gw, gh = g.alpha, g.width, g.height
+    gx = cx + g.left_side_bearing
+    gy = cy + @baseline - g.y_offset
     gh.times do |row|
       py = gy + row
       next if py < 0 || py >= @height
@@ -146,6 +177,29 @@ class BitmapWindow
     end
   end
 
+  # Colour glyph (emoji): RGBA bitmap composited over the cells, centred in its
+  # cell span (emoji are double-width, so span is two cells).
+  def blit_rgba(g, codepoint, cx, cy)
+    span = CharWidth.width(codepoint) * @char_w
+    gx = cx + (span - g.width) / 2
+    gy = cy + (@char_h - g.height) / 2
+    g.height.times do |row|
+      py = gy + row
+      next if py < 0 || py >= @height
+      base = py * @width
+      grow = row * g.width
+      g.width.times do |col|
+        px = gx + col
+        next if px < 0 || px >= @width
+        rgba = g.rgba[grow + col]
+        a = rgba & 0xff
+        next if a.zero?
+        idx = base + px
+        @pixels[idx] = a == 255 ? (rgba >> 8) : over_rgb(rgba >> 8, a, @pixels[idx])
+      end
+    end
+  end
+
   # fg over dst, coverage a (0-255).
   def blend(dst, fg, a)
     ia = 255 - a
@@ -155,22 +209,12 @@ class BitmapWindow
     (r << 16) | (g << 8) | b
   end
 
-  # [alpha_bytes, width, height, left_bearing, y_offset] for a codepoint,
-  # cached; or [nil] if it has no outline (e.g. space).
-  def glyph(codepoint)
-    @glyphs[codepoint] ||= begin
-      gid = @sft.lookup(codepoint)
-      m = gid && @sft.gmetrics(gid)
-      if m.nil? || m.min_width.nil? || m.min_height.nil?
-        [nil]
-      else
-        img = Image.new((m.min_width + 3) & ~3, m.min_height)
-        if @sft.render(gid, img) && img.pixels
-          [img.pixels, img.width, img.height, m.left_side_bearing.round, m.y_offset]
-        else
-          [nil]
-        end
-      end
-    end
+  # src (0xRRGGBB) over dst with alpha a (0-255).
+  def over_rgb(src, a, dst)
+    ia = 255 - a
+    r = ((src >> 16 & 0xff) * a + (dst >> 16 & 0xff) * ia) / 255
+    g = ((src >> 8 & 0xff) * a + (dst >> 8 & 0xff) * ia) / 255
+    b = ((src & 0xff) * a + (dst & 0xff) * ia) / 255
+    (r << 16) | (g << 8) | b
   end
 end

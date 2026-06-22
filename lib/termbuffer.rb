@@ -228,7 +228,10 @@ class TermBuffer
     xend, ymax = epos.first, epos.end
     (spos.end..ymax).each do |y|
       line = line_at(y) || ""
-      xmax = y == ymax ? xend + 1 : line.length - 1
+      # Inclusive of the end column: a range sx..ex on one row covers cells
+      # sx through ex. (Callers convert the half-open boundary selection to an
+      # inclusive cell range before calling.)
+      xmax = y == ymax ? xend : line.length - 1
       xmax = [xmax, line.length - 1].min
       xmax = 0 if xmax < 0
       while x <= xmax

@@ -2,6 +2,7 @@ require_relative 'palette'      # PALETTE_BASIC, FG, BG
 require_relative 'escapeparser'
 require_relative 'utf8decoder'
 require_relative 'charsets'
+require_relative 'charwidth'    # CharWidth.width / WIDE_SPACER
 
 # The escape/control interpreter: it turns a byte stream into operations on
 # a buffer, and knows *nothing* about X11, windows, or how its buffer is
@@ -544,17 +545,29 @@ class Term
       scroll_if_needed
       return if ch == 127   # DEL is ignored in the data stream
 
+      cw = CharWidth.width(ch)
+      # A double-width glyph can't straddle the right margin: if only one
+      # column is left, blank it and wrap so the glyph starts the next line.
+      if cw == 2 && @wraparound && @x == line_width - 1
+        @buffer.set(@x, @y, ' ', fg, bg, @mode)
+        @x = line_width
+        wrap_if_needed
+        scroll_if_needed
+      end
+
       # IRM (insert mode): shift the rest of the line right and repaint it,
-      # then drop the new glyph into the gap.
+      # then drop the new glyph (and its spacer, if wide) into the gap.
       if @irm
-        @buffer.insert(@x, @y, 1, [32,0,0,0])
+        @buffer.insert(@x, @y, cw, [32,0,0,0])
         @buffer.set(@x, @y, charset[ch], fg, bg, @mode)
+        @buffer.set(@x + 1, @y, CharWidth::WIDE_SPACER, fg, bg, @mode) if cw == 2
         redraw_line_from_cursor
       else
         @buffer.set(@x, @y, charset[ch], fg, bg, @mode)
+        @buffer.set(@x + 1, @y, CharWidth::WIDE_SPACER, fg, bg, @mode) if cw == 2
       end
       @y = clamph(@y)
-      @x += 1
+      @x += cw
       scroll_if_needed
     end
   end

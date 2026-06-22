@@ -29,48 +29,35 @@
       end
     end
 
-    # Split @buffer into a complete-sequence prefix and a saved leftover,
-    # then yield the prefix (encoding-tagged) to the caller's per-character
-    # iterator.
+    # Split @buffer into a complete-sequence prefix and a saved leftover, then
+    # yield the prefix (encoding-tagged) to the caller's per-character iterator.
+    # If the buffer ends partway through a multibyte sequence (it was split
+    # across a pty read), those trailing bytes are held back for next time;
+    # everything before them is yielded.
     private def decode
-      # We acknowledge that @buffer can contain
-      # sequences that are invalid UTF8, and we will
-      # do our best with them *unless*:
-      # * @buffer[-1] starts any multibyte sequence
-      # * @buffer[-2] starts a 3 or 4 byte sequence
-      # * @buffer[-3] starts a 4 byte sequence.
-      # In those cases, and those cases only, we
-      # save those bytes for next time.
-
       str = @buffer
       return nil if !str || str.empty?
-      last = str.length-1
+      yield_len = str.length
 
       if str[-1].ord >= 0x80
-        # -1 is part of a multibyte sequence (a continuation byte 0x80-0xBF
-        # or a lead byte 0xC0+). NB: this must be >= 0x80, not > 0x80 - a
-        # trailing 0x80 is the second byte of e.g. an em-dash (E2 80 94)
-        # split across a pty read; treating it as complete dropped the
-        # lead bytes and orphaned the final byte into the next chunk.
-        if str.length == 1
-          # Single byte that starts a multibyte sequence
-            last = -2  # Process nothing, save everything
-        elsif str[-2] && str[-2].ord & 0xe0 == 0xc0 # -2..-1 is a 2 byte sequence; we're good.
-        elsif str[-2] && str[-2].ord & 0xe0 == 0xe0 # Start of a 3 or 4 byte sequence
-          last = str.length-3
-        else # -2 is *part of a 3 or 4 byte sequence
-          if    str[-3] && str[-3].ord & 0xf0 == 0xe0 # -3 Starts a 3 byte sequence
-          elsif str[-3] && str[-3].ord & 0xf8 == 0xf0 # -3 starts a 4 byte sequence
-            last = str.length-4
-          else # -2 must be the final byte of something, so we only chop the last
-            last = str.length-2
+        # Find the lead byte of the final sequence by skipping back over up to
+        # three continuation bytes (0x80-0xBF). If that sequence isn't yet
+        # complete, hold it (and everything after the lead) for the next chunk.
+        j = str.length - 1
+        j -= 1 while j.positive? && (str[j].ord & 0xc0) == 0x80 && str.length - j < 4
+        lead = str[j].ord
+        needed =
+          if    lead & 0xe0 == 0xc0 then 2
+          elsif lead & 0xf0 == 0xe0 then 3
+          elsif lead & 0xf8 == 0xf0 then 4
+          else 0 # orphan continuation byte or not a lead - nothing to hold back
           end
-        end
+        yield_len = j if needed.positive? && (str.length - j) < needed
       end
-      @leftover = str[last+1..-1].b
-      complete = str[0..last].force_encoding("UTF-8")
-      yield complete
-      @buffer = @leftover
+
+      complete = str[0, yield_len].force_encoding("UTF-8")
+      @buffer  = str[yield_len..].b
+      yield complete unless complete.empty?
     end
 
   end
