@@ -13,6 +13,12 @@
 #
 # Combining marks (width 0) are deliberately not handled yet (treated as 1).
 module CharWidth
+  # Codepoint stored in the second cell of a double-width glyph: a blank,
+  # advancing placeholder. The terminal writes it after a wide char so the
+  # next column is reserved; the X11 backend renders codepoint 0 as a blank
+  # advancing glyph and the bitmap/virtual backends skip it.
+  WIDE_SPACER = 0
+
   # Wide (two-cell) blocks: CJK, Hangul, Kana, fullwidth forms, and emoji.
   WIDE = [
     0x1100..0x115F, 0x231A..0x232A, 0x23E9..0x23F3, 0x25FD..0x27BF,
