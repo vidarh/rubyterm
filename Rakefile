@@ -57,13 +57,13 @@ end
 # Run the terminal application
 desc "Run the terminal emulator"
 task :run do
-  sh "ruby bin/rubyterm"
+  sh "bundle exec ruby bin/rubyterm"
 end
 
 # Debug mode
 desc "Run the terminal emulator in debug mode"
 task :debug do
-  sh "DEBUG=1 ruby bin/rubyterm"
+  sh "DEBUG=1 bundle exec ruby bin/rubyterm"
 end
 
 # Build executable (requires rubypkg tool)
