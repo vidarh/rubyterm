@@ -18,6 +18,25 @@ all.
 > to contribute, **talk to me first** (vidar@hokstad.com) or fork — I won't
 > promise to merge changes we haven't discussed.
 
+## Getting started
+
+rubyterm is a **standalone X11 terminal emulator** — like `xterm` or any
+other terminal, but written entirely in Ruby. You run it inside a running X
+session and it opens a window with a shell in it.
+
+    gem install rubyterm
+
+Then, from within an X session (`$DISPLAY` must point at your X server):
+
+    rubyterm                  # your $SHELL in a new window
+    rubyterm bash -lc htop    # ...or run a specific command
+
+Launch it however you launch any other terminal — from your window manager's
+menu or a keybinding, from your X startup file, or from an existing terminal.
+
+**Tabs?** Not yet — rubyterm is one terminal per window. For multiple
+sessions, open several windows or run `tmux`/`screen` inside it.
+
 ## Screenshots of Ruby-in-Ruby-in-Ruby-...
 
 ![Rubyterm](docs/2026-06-15_18-40_1.png)
@@ -57,31 +76,30 @@ For the full picture and the rationale behind the layering, see:
 
 ## Installation
 
-Dependencies are managed with Bundler.
+**From RubyGems** — to use it:
 
 ```bash
+gem install rubyterm
+rubyterm                  # then run it inside an X session
+```
+
+**From source** — to hack on it:
+
+```bash
+git clone https://github.com/vidarh/rubyterm && cd rubyterm
 bundle install
+bundle exec rubyterm
 ```
 
-`skrift` and `skrift-x11` are developed alongside this project and are
-pulled from git. To build against a local checkout instead of the pushed
-branch, set a per-machine local override (kept out of the repo):
+[skrift](https://github.com/vidarh/skrift) — the pure-Ruby TrueType/OpenType
+font renderer rubyterm draws its text with — and its companion plugins live in
+one monorepo and are pulled from git. To build against a local checkout, set
+one per-machine override at the monorepo root (kept out of the repo):
 
 ```bash
-bundle config set --global local.skrift     /path/to/skrift
-bundle config set --global local.skrift-x11 /path/to/skrift-x11
+bundle config set --global disable_local_branch_check true
+bundle config set --global local.skrift /path/to/skrift
 ```
-
-## Running
-
-```bash
-bundle exec rubyterm                 # start a terminal running your $SHELL
-bundle exec rubyterm bash -lc htop   # ...or run a specific command
-```
-
-With some luck you'll get a terminal window. Once the gem (and its
-dependencies) are installed system-wide, the `rubyterm` executable can be
-run directly.
 
 ## Configuration
 
