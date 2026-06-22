@@ -36,7 +36,7 @@ Gem::Specification.new do |spec|
   # Runtime dependencies. skrift, its X11 adapter and the colour-emoji plugin
   # live in the skrift monorepo; until they're on RubyGems the Gemfile sources
   # them from git (skrift-boxdrawing comes in transitively via skrift-x11).
-  spec.add_dependency "pure-x11"
+  spec.add_dependency "pure-x11", ">= 0.0.15"
   spec.add_dependency "skrift",       ">= 0.4.0"
   spec.add_dependency "skrift-x11",   ">= 0.3.0"
   spec.add_dependency "skrift-color", ">= 0.1.0"
