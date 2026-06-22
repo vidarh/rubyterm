@@ -16,7 +16,7 @@ class Controller
 
   def run(*args)
     cmd = args.empty? ? @shell : [@shell, '-c', args.join(' ')]
-    @master, @wr, @pid = *PTY.spawn(*cmd)
+    @master, @wr, @pid = *spawn_child(cmd)
 
     Thread.new do
       loop do
@@ -30,6 +30,19 @@ class Controller
           exit(Process.wait(@pid))
         end
       end
+    end
+  end
+
+  # Spawn the child shell/command with the user's own gem environment, not
+  # rubyterm's bundle: when rubyterm runs under `bundle exec`, BUNDLE_GEMFILE /
+  # GEM_PATH leak into children, so a Bundler-based shell (or any tool relying
+  # on the system gems) fails to load its gems and exits immediately. Stripping
+  # the bundle env restores the pre-bundle-exec behaviour.
+  def spawn_child(cmd)
+    if defined?(Bundler)
+      Bundler.with_unbundled_env { PTY.spawn(*cmd) }
+    else
+      PTY.spawn(*cmd)
     end
   end
 
