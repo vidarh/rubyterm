@@ -4,11 +4,26 @@
 
 require 'skrift'
 require 'skrift/x11'
+require_relative 'charwidth'
 #require 'pry'
+
+# Colour-glyph (emoji) support is optional.
+begin
+  require 'skrift/color'
+rescue LoadError
+end
 
 class Window
   attr_reader :dpy, :wid, :scrollback_count # FIXME
   attr_accessor :width, :height
+
+  DEFAULT_EMOJI = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
+
+  # Gates a colour renderer to emoji codepoints, so text a colour font also
+  # maps (e.g. Noto's keycap digits) keeps rendering as ordinary text.
+  EmojiColour = Struct.new(:renderer) do
+    def render(cp) = CharWidth.emoji?(cp) ? renderer.render(cp) : nil
+  end
   
   # Get scrollback status
   def scrollback_mode
@@ -212,10 +227,27 @@ class Window
     xs = @col_scale || @scale
     # fit: scale oversized glyphs (e.g. wide spinner/symbol chars) down into
     # the fixed cell instead of letting them overflow/clamp at the edge.
-    @skr = Skrift::X11::Glyphs.new(@dpy, fontset: @fontset, x_scale: xs, y_scale: @scale, fixed: true, fit: true)
+    @skr = Skrift::X11::Glyphs.new(@dpy, fontset: @fontset, x_scale: xs, y_scale: @scale, fixed: true, fit: true,
+                                   color: colour_delegate(@scale))
     # FIXME: Maybe instantiate these as needed.
     @skr_dblheight = Skrift::X11::Glyphs.new(@dpy, fontset: @fontset, x_scale: xs*2, y_scale: @scale*2, fixed: true)
     @skr_dblwidth  = Skrift::X11::Glyphs.new(@dpy, fontset: @fontset, x_scale: xs*2, y_scale: @scale, fixed: true)
+  end
+
+  # An emoji-gated colour delegate built from the first colour-capable font in
+  # the fontset (or a default emoji font), or nil if none / skrift-color is
+  # absent. Passed to the main Glyphs renderer so emoji draw in colour.
+  def colour_delegate(scale)
+    return nil unless defined?(Skrift::Color::Renderer)
+    fonts = Skrift::FontSet.new(Array(@fontset)).each.to_a
+    fonts << Skrift::Font.load(DEFAULT_EMOJI) if File.exist?(DEFAULT_EMOJI)
+    fonts.each do |f|
+      cr = Skrift::Color::Renderer.new(f, x_scale: scale, y_scale: scale)
+      return EmojiColour.new(cr) if cr.color?
+    end
+    nil
+  rescue StandardError
+    nil
   end
 
   def adjust_fontsize(adj)
