@@ -19,6 +19,8 @@
 #
 # All operations are recorded in @trace when trace_enabled, for
 # under/over-draw analysis.
+require_relative "../../lib/charwidth"
+
 module Harness
   class VirtualWindow
     # Deliberately identical to fillrect's black: Window#clear paints
@@ -168,7 +170,7 @@ module Harness
 
     def draw_glyphs(x, y, str, fg, cell_w, cell_h)
       str.each_char.with_index do |chr, i|
-        next if chr == " "
+        next if chr == " " || chr.ord == CharWidth::WIDE_SPACER # space / wide tail
         gx = x + i * cell_w
         # Inset rect: background stays visible at the cell border, so
         # both wrong-background and wrong-glyph bugs are caught.
