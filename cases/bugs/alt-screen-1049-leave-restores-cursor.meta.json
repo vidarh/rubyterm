@@ -1,0 +1,5 @@
+{
+  "geometry": "100x33",
+  "chunk": 128,
+  "reason": "DEC private mode 1049 unhandled: ESC[?1049l never restores saved cursor after ESC[31;3H move"
+}

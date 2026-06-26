@@ -115,6 +115,15 @@ class Term
     @buffer.clear   # the buffer (TrackChanges) also clears the backend
   end
 
+  # Cursor + charset save/restore, shared by DECSC/DECRC (ESC 7 / ESC 8) and
+  # DEC private modes 1048/1049. DECRC with no prior save defaults to the home
+  # position and default charsets rather than leaving @x/@y nil (which would
+  # crash draw_cursor).
+  def save_cursor    = @saved = [@x, @y, @gl, @gr, @g.dup]
+  def restore_cursor
+    @x, @y, @gl, @gr, @g = @saved || [0, 0, 0, nil, [DefaultCharset, nil, nil, nil]]
+  end
+
   # RIS - Reset to Initial State (ESC c). Full reset: restore margins,
   # modes, charsets, tab stops and attributes to their defaults, home the
   # cursor and clear the screen.
@@ -408,6 +417,16 @@ class Term
           # FIXME: Save/restore
           # FIXME: Scrollback should be disabled/enabled.
           clear_screen
+        when 1048
+          # Save (h) / restore (l) cursor, as DECSC / DECRC.
+          set ? save_cursor : restore_cursor
+        when 1049
+          # Alternate screen + cursor save/restore. Like mode 47 this
+          # terminal has no separate alt buffer yet, so it just clears; the
+          # cursor save (on enter) / restore (on leave) is what apps rely on
+          # to land the cursor back where it was before the alt screen.
+          set ? save_cursor : restore_cursor
+          clear_screen
 
         # Extended mouse modes
         # See https://terminalguide.namepad.de/mouse/
@@ -596,12 +615,8 @@ class Term
     when ")B"; @g[1] = DefaultCharset
     when "(0"; @g[0] = GraphicsCharset
     when ")0"; @g[1] = GraphicsCharset
-    when "7";  @saved = [@x,@y,@gl,@gr,@g.dup]
-    when "8"
-      # DECRC with no prior DECSC: default to home position and default
-      # charsets rather than leaving @x/@y nil (which crashes draw_cursor).
-      sx, sy, sgl, sgr, sg = @saved || [0, 0, 0, nil, [DefaultCharset, nil, nil, nil]]
-      @x, @y, @gl, @gr, @g = sx, sy, sgl, sgr, sg
+    when "7";  save_cursor    # DECSC
+    when "8";  restore_cursor # DECRC
     else
       unhandled(:escape, s)
     end

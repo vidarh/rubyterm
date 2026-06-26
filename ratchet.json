@@ -1,4 +1,5 @@
 [
+  "bugs/alt-screen-1049-leave-restores-cursor",
   "bugs/charwidth-dingbat-spinner-single-width",
   "synthetic/autowrap-off",
   "synthetic/backspace",
