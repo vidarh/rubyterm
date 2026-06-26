@@ -15,8 +15,19 @@ class TestCharWidth < Minitest::Test
   end
 
   def test_emoji_are_double_width
-    [0x1F600, 0x1F44D, 0x1F389, 0x1F680, 0x2764].each do |cp|
+    [0x1F600, 0x1F44D, 0x1F389, 0x1F680].each do |cp|
       assert_equal 2, CharWidth.width(cp), format("U+%04X", cp)
+    end
+  end
+
+  # Cell width is independent of colour: text-presentation emoji (no VS16)
+  # occupy one column, matching tmux, even though they still render in colour
+  # (see test_emoji_predicate_true_for_emoji). A wrong width here shifts every
+  # line that uses the character. U+273B (✻) is a plain dingbat: width 1, and
+  # not an emoji.
+  def test_text_presentation_emoji_and_dingbats_are_single_width
+    [0x2764, 0x2702, 0x2716, 0x273B].each do |cp|
+      assert_equal 1, CharWidth.width(cp), format("U+%04X", cp)
     end
   end
 

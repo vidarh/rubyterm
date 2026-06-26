@@ -1,4 +1,5 @@
 [
+  "bugs/charwidth-dingbat-spinner-single-width",
   "synthetic/autowrap-off",
   "synthetic/backspace",
   "synthetic/charset-dec",
