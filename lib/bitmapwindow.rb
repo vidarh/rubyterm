@@ -83,10 +83,14 @@ class BitmapWindow
   # for now - it does not affect correctness of the text, only its scale.
   def draw(x, y, str, fg, bg, _lineattrs = nil)
     fillrect(x, y, str.length * @char_w, @char_h, bg)
-    str.each_char.with_index do |ch, i|
-      cp = ch.ord
+    cps = str.each_char.map(&:ord)
+    cps.each_with_index do |cp, i|
       next if cp == 32 || cp == CharWidth::WIDE_SPACER # space / wide-glyph tail
-      blit_glyph(cp, x + i * @char_w, y, fg)
+      # A WIDE_SPACER in the next cell means this is a double-width glyph; render
+      # it two cells wide so it overflows into the (skipped) spacer cell instead
+      # of being shrunk into one.
+      cells = cps[i + 1] == CharWidth::WIDE_SPACER ? 2 : 1
+      blit_glyph(cp, x + i * @char_w, y, fg, cells)
     end
   end
 
@@ -146,8 +150,8 @@ class BitmapWindow
     end
   end
 
-  def blit_glyph(codepoint, cx, cy, fg)
-    g = @cache.glyph(codepoint)
+  def blit_glyph(codepoint, cx, cy, fg, cells = 1)
+    g = @cache.glyph(codepoint, cells)
     return unless g
     if g.color?
       blit_rgba(g, codepoint, cx, cy)

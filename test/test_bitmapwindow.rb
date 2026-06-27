@@ -156,6 +156,47 @@ class TestBitmapWindow < Minitest::Test
                  "jump-scrolled final screen must equal incremental rendering"
   end
 
+  # A double-width glyph must fill BOTH its cells, not be shrunk into one.
+  # Uses unifont, whose CJK ideographs are full-width (twice the half-width
+  # Latin cell) — exactly the metric where the renderer's fit-to-cell used to
+  # squeeze a wide glyph into a single column. Skipped if unifont is absent.
+  UNIFONT = [
+    File.expand_path("~/.local/share/fonts/unifont-15.0.06.ttf"),
+    "/usr/share/fonts/truetype/unifont/unifont.ttf",
+  ].find { |p| File.exist?(p) }
+
+  def test_wide_glyph_fills_both_cells
+    skip "unifont not available" unless HAVE_SKRIFT && UNIFONT
+
+    win = BitmapWindow.new(COLS, ROWS, font: UNIFONT)
+    adapter = WindowAdapter.new(win, Host.new(COLS))
+    tc = TrackChanges.new(TermBuffer.new, adapter)
+    tc.defer = true
+    term = Term.new(tc)
+    term.resize(COLS, ROWS)
+    tc.on_resize(COLS, ROWS)
+
+    old = $stdout
+    $stdout = StringIO.new
+    term.clear_cursor
+    term.feed("\e[2J\e[H漢A".b)   # 漢 (wide) then ASCII A (narrow)
+    tc.draw_flush
+    $stdout = old
+
+    cw = win.char_w
+    ch = win.char_h
+    ink = lambda do |col|
+      (0...ch).any? do |y|
+        (col * cw...(col + 1) * cw).any? { |x| win.pixels[y * win.width + x] != 0 }
+      end
+    end
+
+    assert ink.call(0), "wide glyph should ink its first cell"
+    assert ink.call(1), "wide glyph should also fill its SECOND cell (not shrink to one)"
+    assert ink.call(2), "the narrow 'A' should ink the cell after the wide glyph"
+    refute ink.call(3), "the narrow 'A' must not bleed into a fourth cell"
+  end
+
   def test_scrolling_moves_content_up
     feed("\e[2J\e[Hrow0\r\nrow1")
     before = cell_pixels(0, 1).dup   # 'r' of row1 at row 1

@@ -1,6 +1,6 @@
 GIT
   remote: https://github.com/vidarh/skrift.git
-  revision: 1f3592cde684bb23348b6cd6247b635515aa516c
+  revision: ffbf33798118b2ed37542a801c4a808a21fc13e8
   branch: master
   specs:
     skrift (0.4.0)
