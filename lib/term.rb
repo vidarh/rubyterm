@@ -565,6 +565,11 @@ class Term
       return if ch == 127   # DEL is ignored in the data stream
 
       cw = CharWidth.width(ch)
+      # Zero-width codepoints (variation selectors like U+FE0F, combining marks,
+      # zero-width joiners) modify the preceding glyph. This buffer stores one
+      # codepoint per cell and can't compose, so drop them rather than letting
+      # them claim a cell of their own — which would paint over the next column.
+      return if cw == 0
       # A double-width glyph can't straddle the right margin: if only one
       # column is left, blank it and wrap so the glyph starts the next line.
       if cw == 2 && @wraparound && @x == line_width - 1
