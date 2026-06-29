@@ -420,6 +420,25 @@ class RubyTerm
     @buffer.draw_flush
   end
 
+  # A line of the scroll region [start..bottom] has scrolled up into
+  # history. The selection is stored in *buffer* coordinates (negative rows
+  # = scrollback), so the content the user selected now sits one row higher:
+  # cells inside the scrolled region - and anything already in scrollback,
+  # whose negative index shifts as the history grows - move up by one, while
+  # content below the region stays put. Shift the stored selection to match
+  # so reapply_selection keeps the highlight pinned to the same text as it
+  # scrolls (into scrollback and back), instead of leaving it on whatever
+  # rolls into the old screen rows. Called from TrackChanges#scroll_up via
+  # the adapter for every line moved into history.
+  def shift_selection_for_scroll(start, bottom)
+    return unless @select_startpos
+    [@select_startpos, @select_endpos].each do |pos|
+      next unless pos
+      y = pos[1]
+      pos[1] -= 1 if y < 0 || (y >= start && y <= bottom)
+    end
+  end
+
   # FIXME: Cursor, selection etc. are "special" overlays on top of attributes.
   # Allow the terminal to set a set of positions + fg/bg, and a set of ranges.
   def render_selection

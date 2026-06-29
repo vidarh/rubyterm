@@ -69,6 +69,10 @@ class TrackChanges
     start  = @buffer.scroll_start.to_i
     bottom = @buffer.scroll_end || (@rows - 1)
     @buffer.scroll_up
+    # The content moved up in the buffer; keep any active text selection
+    # pinned to it. Done before the @suspend bail-out so the selection stays
+    # aligned even through jump-scrolled (unrendered) frames.
+    @adapter.scroll_selection(start, bottom)
     return if @suspend
     if @adapter.scrollback_mode
       @adapter.scrollback_anchor

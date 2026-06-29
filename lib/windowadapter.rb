@@ -30,6 +30,14 @@ class WindowAdapter
   # offset instead of letting the viewport drift.
   def scrollback_anchor = @window.scrollback_anchor
 
+  # A line of the scroll region [start..bottom] has moved into history.
+  # Forward to the orchestrator so it can keep a live text selection pinned
+  # to the content it covers. The headless harness/bench hosts have no
+  # selection state and do not implement this, so it no-ops there.
+  def scroll_selection(start, bottom)
+    @term.shift_selection_for_scroll(start, bottom) if @term.respond_to?(:shift_selection_for_scroll)
+  end
+
   # DECCOLM: the terminal asked to switch to +cols+ columns (80/132). The
   # orchestrator (RubyTerm) owns the window pixels, font scale, config and
   # the pty size report, so delegate to it. The headless harness "term"
