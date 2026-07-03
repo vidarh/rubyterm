@@ -535,9 +535,12 @@ class RubyTerm
           clear_selection_if_set
         end
       end
-    when :vt200, :btn_event
+    when :vt200, :btn_event, :any_event
       # FIXME: This is only right for  @mouse_reporting == :digits
       # FIXME: Report modifiers.
+      # FIXME: Motion reporting is the same for all three modes; strictly
+      # :vt200 (1000) reports no motion and :any_event (1003) reports all
+      # motion, not just with a button held.
       # Not reporting release for scroll wheel
       return if release && button >= 4
       event = [0,1,2,64,65][button-1]
