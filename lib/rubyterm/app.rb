@@ -364,30 +364,76 @@ class RubyTerm
   # full page of 10).
   WHEEL_SCROLL_LINES = 3
 
-  # Move the scrollback view up/down by +lines+ and repaint. Shared by
-  # Shift+PageUp/Down and the wheel; redraw re-stamps any selection so the
-  # highlight travels with the view.
+  # Move the scrollback view up/down by +lines+ and repaint incrementally:
+  # blit the rows that stay on screen (the same CopyArea mechanism live
+  # scrolling uses) and repaint only the newly exposed ones. The previous
+  # full clear+redraw per step made wheel scrolling visibly jerky. Shared
+  # by Shift+PageUp/Down and the wheel.
+  #
+  # The blit carries the selection-highlight pixels along with their text
+  # (the selection is pinned to buffer content), so only the freshly
+  # repainted rows need the overlay re-stamped - reapply_selection does
+  # that at the end.
   def scrollback_view_up(lines = 10)
-    before = @window.scrollback_count
-    @window.scrollback_page_up(lines)
-    # No history, or already at the top: nothing moved, skip the repaint
+    # Nothing above the view: don't touch the cursor or repaint at all
     # (wheel ticks arrive far more often than Shift+PageUp ever did).
-    redraw if @window.scrollback_count != before
+    return if @window.scrollback_count >= @window.scrollback_buffer_size
+    if !@window.scrollback_mode
+      # Leaving the live screen: repaint the cursor cell first - cursor
+      # redraws are suppressed once scrolled back, and the blit below would
+      # otherwise drag the cursor overlay along as if it were content.
+      @term.clear_cursor
+      @buffer.draw_flush
+    end
+    moved = @window.scrollback_scroll(lines)
+    rows = @term.height
+    # A jump of a screenful or more retains nothing worth blitting.
+    return redraw if moved >= rows
+    # Shift the surviving rows down by +moved+ (this also clears the
+    # vacated top band and re-draws the scrollback indicator over row 0).
+    @window.scroll_down(0, @window.width, (rows - moved) * char_h, moved * char_h)
+    # Repaint the newly exposed history rows. Row 0 stays the indicator
+    # line, so start at 1; include row +moved+, where the old top row's
+    # indicator-overlay pixels landed.
+    (1..moved).each { |sy| repaint_view_row(sy) }
+    @buffer.draw_flush
+    @window.flush
+    reapply_selection
   end
 
   def scrollback_view_down(lines = 10)
     # Don't do anything if not in scrollback mode
     return if !@window.scrollback_mode
-    # True when this lands us back on the live screen
-    changed = @window.scrollback_page_down(lines)
-    redraw
+    moved = @window.scrollback_scroll(-lines)
+    return if moved == 0
+    exited = !@window.scrollback_mode  # landed back on the live screen
+    rows = @term.height
+    if moved >= rows
+      redraw
+    else
+      # Shift the surviving rows up (clears the vacated bottom band; the
+      # indicator is re-drawn only while still scrolled back).
+      @window.scroll_up(moved * char_h, @window.width, (rows - moved) * char_h, moved * char_h)
+      # Repaint the rows that scrolled into view at the bottom.
+      (rows - moved...rows).each { |sy| repaint_view_row(sy) }
+      @buffer.draw_flush
+      @window.flush
+      reapply_selection
+    end
     # Explicitly force cursor to be redrawn if exiting scrollback mode
-    if changed
+    if exited
       @term.clear_cursor
       @term.draw_cursor
       @buffer.draw_flush
       @window.flush
     end
+  end
+
+  # Repaint one on-screen row from the buffer at the current view offset
+  # (blank cells paint as spaces, so this also erases stale pixels).
+  def repaint_view_row(sy)
+    sb = @window.scrollback_count
+    (0...@term.width).each { |x| @buffer.redraw_display(x, sy, sb) }
   end
 
   def redraw_positions(positions) = positions.each { |pos| @buffer.redraw(*pos) }

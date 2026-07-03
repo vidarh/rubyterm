@@ -41,32 +41,19 @@ class Window
     @buffer.scrollback_size
   end
   
-  # Increase scrollback counter by +lines+ (a page by default; the mouse
-  # wheel scrolls a few lines per tick).
-  def scrollback_page_up(lines = 10)
-    # Get current scrollback buffer size
-    max_scrollback = scrollback_buffer_size
-    return if max_scrollback == 0
-
-    # Store previous count for calculating how many new lines to clear
-    previous_count = @scrollback_count
-
-    # Limit scrollback count to available lines
-    @scrollback_count += lines
-    if @scrollback_count > max_scrollback
-      @scrollback_count = max_scrollback
-    end
-
-    # Calculate how many new lines we've scrolled and clear them
-    new_lines = @scrollback_count - previous_count
-    if new_lines > 0
-      # Clear the area where new scrollback lines will appear
-      clear(0, 0, @width, new_lines * char_h)
-    end
-
-    draw_scrollback_indicator if @scrollback_count <= lines
+  # Move the scrollback view by +lines+ (positive = further back into
+  # history, negative = towards the live screen), clamped to
+  # [0, history size]. This is a pure model update - repainting (a blit of
+  # the surviving rows plus a repaint of the exposed ones, or a full
+  # redraw) is the caller's job. Returns the number of lines actually
+  # moved, 0 when already at the corresponding end.
+  def scrollback_scroll(lines)
+    was = @scrollback_count
+    @scrollback_count = (was + lines).clamp(0, scrollback_buffer_size)
+    (@scrollback_count - was).abs
   end
-  
+
+
   # Snap straight back to the live screen (bottom of scrollback). Returns
   # true if we were scrolled back, so the caller knows a redraw is needed.
   def scrollback_reset
@@ -83,34 +70,6 @@ class Window
   def scrollback_anchor
     return if @scrollback_count <= 0
     @scrollback_count += 1
-  end
-
-  # Decrease scrollback counter by +lines+. Returns true when this exits
-  # scrollback mode (back on the live screen), so the caller can redraw the
-  # cursor.
-  def scrollback_page_down(lines = 10)
-    return false if @scrollback_count <= 0
-
-    # Remember previous count
-    previous_count = @scrollback_count
-
-    @scrollback_count -= lines
-    if @scrollback_count <= 0
-      # Exiting scrollback mode
-      @scrollback_count = 0
-      @dirty = true
-      
-      # Clear entire scrollback area that was showing
-      clear(0, 0, @width, previous_count * char_h)
-      return true
-    else
-      # Clear area that was occupied by lines no longer in scrollback
-      lines_removed = previous_count - @scrollback_count
-      if lines_removed > 0
-        clear(0, 0, @width, lines_removed * char_h)
-      end
-    end
-    false
   end
 
   def initialize(**opts)
