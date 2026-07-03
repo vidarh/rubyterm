@@ -286,30 +286,10 @@ class RubyTerm
     when :"ctrl_+" then adjust_fontsize(1.0)
     when :"ctrl_-" then adjust_fontsize(-1.0)
     when :shift_page_up
-      @window.scrollback_page_up
-      # Full redraw to show scrollback buffer
-      redraw
+      scrollback_view_up
       return
     when :shift_page_down
-      # Don't do anything if not in scrollback mode
-      return if !@window.scrollback_mode
-      
-      # If we're exiting scrollback mode or still in it
-      changed = @window.scrollback_page_down
-      
-      # Redraw everything from scratch
-      redraw
-      
-      # Explicitly force cursor to be redrawn if exiting scrollback mode
-      if changed
-        # Clear cursor if it exists
-        @term.clear_cursor
-        # Force draw cursor again
-        @term.draw_cursor
-        # Ensure changes are flushed
-        @buffer.draw_flush
-        @window.flush
-      end
+      scrollback_view_down
       return
     when :XK_Insert  # Paste primary selection
       # FIXME: Giant hack
@@ -378,6 +358,36 @@ class RubyTerm
   # otherwise typed/echoed output is drawn over the scrolled-back display.
   def exit_scrollback
     redraw if @window.scrollback_reset
+  end
+
+  # Lines the view moves per mouse wheel tick (Shift+PageUp/Down move a
+  # full page of 10).
+  WHEEL_SCROLL_LINES = 3
+
+  # Move the scrollback view up/down by +lines+ and repaint. Shared by
+  # Shift+PageUp/Down and the wheel; redraw re-stamps any selection so the
+  # highlight travels with the view.
+  def scrollback_view_up(lines = 10)
+    before = @window.scrollback_count
+    @window.scrollback_page_up(lines)
+    # No history, or already at the top: nothing moved, skip the repaint
+    # (wheel ticks arrive far more often than Shift+PageUp ever did).
+    redraw if @window.scrollback_count != before
+  end
+
+  def scrollback_view_down(lines = 10)
+    # Don't do anything if not in scrollback mode
+    return if !@window.scrollback_mode
+    # True when this lands us back on the live screen
+    changed = @window.scrollback_page_down(lines)
+    redraw
+    # Explicitly force cursor to be redrawn if exiting scrollback mode
+    if changed
+      @term.clear_cursor
+      @term.draw_cursor
+      @buffer.draw_flush
+      @window.flush
+    end
   end
 
   def redraw_positions(positions) = positions.each { |pos| @buffer.redraw(*pos) }
@@ -500,6 +510,19 @@ class RubyTerm
     shift = pkt.state.anybits?(0x01) # ShiftMask
     case shift ? nil : @term.mouse_mode
     when nil
+      # Wheel ticks (buttons 4/5) scroll the local scrollback view, the way
+      # every other terminal scrolls natively - this is what an app that
+      # does not grab the mouse (e.g. a shell, or claude's inline mode)
+      # relies on. Handled before the selection logic below so a wheel tick
+      # never starts or clears a selection. With Shift held this branch is
+      # forced even when an app owns the mouse, so Shift+wheel always
+      # scrolls history - the same override as Shift+select.
+      if button >= 4
+        return if release   # each tick is a press+release pair; act on press
+        scrollback_view_up(WHEEL_SCROLL_LINES)   if button == 4
+        scrollback_view_down(WHEEL_SCROLL_LINES) if button == 5
+        return
+      end
       # Selection coordinates are cell *boundaries* (round to the nearest
       # column edge, not the floor cell), so dragging across a single cell
       # selects exactly that cell and a click (no boundary crossed) selects
